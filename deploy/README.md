@@ -5,6 +5,28 @@ headless Shennong DB data plane, the Agent Runtime, PostgreSQL, the trusted
 Shennong Runtime daemon, and a single Caddy gateway. Untrusted Job and IDE
 containers run in a separate, dedicated rootless Docker daemon.
 
+All application services now default to public `zerostwo/*:latest` Docker Hub
+images, so a normal install does not need local builds or seven image variables.
+Before starting the stack, pull the trusted images with the system daemon and
+the workload images with the dedicated rootless daemon:
+
+```bash
+docker compose --env-file /srv/shennong.one/.env \
+  --file /srv/shennong.one/compose.yaml pull
+DOCKER_HOST=unix:///run/user/<runtime-uid>/shennong-runtime-docker/docker.sock \
+  docker pull zerostwo/shennong-runtime-worker:latest
+DOCKER_HOST=unix:///run/user/<runtime-uid>/shennong-runtime-docker/docker.sock \
+  docker pull zerostwo/shennong-runtime-ide:latest
+```
+
+For reproducible production and rollback, override the defaults with immutable
+digests in `.env`: `SHENNONG_OS_WEB_IMAGE`, `SHENNONG_OS_SERVER_IMAGE`,
+`SHENNONG_AGENT_RUNTIME_IMAGE`, `SHENNONG_DB_IMAGE`,
+`SHENNONG_RUNTIME_DAEMON_IMAGE`, `SHENNONG_WORKER_IMAGE`, and
+`SHENNONG_IDE_IMAGE`. Caddy and PostgreSQL remain reviewed, digest-pinned
+constants in Compose. `SHENNONG_SECRETS_DIR` defaults to `./secrets`, while the
+three persistent-data paths default below `/srv/shennong.one/data`.
+
 The gateway publishes one TCP port but uses two browser origins. The product
 origin reaches only the WebUI. The independent IDE host reaches only the OS IDE
 ticket/proxy routes. DB, Agent Runtime, PostgreSQL, Runtime control, and raw IDE
@@ -39,11 +61,10 @@ enable the socket. It binds only the Shennong control bridge gateway
 `host.docker.internal` only inside Agent Runtime; no Ollama port is published
 on the LAN and no untrusted Job or IDE network can reach the control bridge.
 
-Copy `.env.example` to `/srv/shennong.one/.env`, replace the worker and IDE
-digest placeholders, retain or deliberately update the reviewed Caddy and
-PostgreSQL digests, set the two public origins for the deployment host, and
-generate each symmetric secret under `/srv/shennong.one/secrets` with at least
-32 cryptographically random bytes. Generate the Runtime signing pair separately:
+Copy `.env.example` to `/srv/shennong.one/.env`, set the two public origins and
+the dedicated Runtime account IDs/socket paths, and generate each symmetric
+secret under `/srv/shennong.one/secrets` with at least 32 cryptographically
+random bytes. Generate the Runtime signing pair separately:
 
 ```bash
 openssl genpkey -algorithm ED25519 \
@@ -99,6 +120,8 @@ Then validate and start the trusted stack:
 ```bash
 docker compose --env-file /srv/shennong.one/.env \
   --file /srv/shennong.one/compose.yaml config
+docker compose --env-file /srv/shennong.one/.env \
+  --file /srv/shennong.one/compose.yaml pull
 docker compose --env-file /srv/shennong.one/.env \
   --file /srv/shennong.one/compose.yaml up --detach
 ```

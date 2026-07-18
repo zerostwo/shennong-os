@@ -2,7 +2,7 @@ name: shennong-one
 
 services:
   gateway:
-    image: ${SHENNONG_CADDY_IMAGE:?set a digest-pinned Caddy image}
+    image: caddy:2.11.3-alpine@sha256:86deaf5e3d3408a6ccec08fbb79989783dd26e206ae10bcf78a801dc8c9ab794
     restart: unless-stopped
     ports:
       - "${SHENNONG_PUBLIC_BIND:-0.0.0.0}:${SHENNONG_PUBLIC_PORT:-18081}:80"
@@ -25,7 +25,7 @@ services:
       - control
 
   web:
-    image: ${SHENNONG_OS_WEB_IMAGE:-shennong-os-web:1.0.0}
+    image: ${SHENNONG_OS_WEB_IMAGE:-zerostwo/shennong-os-web:latest}
     restart: unless-stopped
     read_only: true
     init: true
@@ -51,7 +51,7 @@ services:
       - control
 
   os-server:
-    image: ${SHENNONG_OS_SERVER_IMAGE:-shennong-os-server:1.0.0}
+    image: ${SHENNONG_OS_SERVER_IMAGE:-zerostwo/shennong-os-server:latest}
     restart: unless-stopped
     read_only: true
     init: true
@@ -111,7 +111,7 @@ services:
       - control
 
   agent-runtime:
-    image: ${SHENNONG_AGENT_RUNTIME_IMAGE:-shennong-os-agent-runtime:1.0.0}
+    image: ${SHENNONG_AGENT_RUNTIME_IMAGE:-zerostwo/shennong-os-agent-runtime:latest}
     restart: unless-stopped
     read_only: true
     init: true
@@ -140,7 +140,7 @@ services:
       - control
 
   shennong-db:
-    image: ${SHENNONG_DB_IMAGE:-shennong-db:1.0.0}
+    image: ${SHENNONG_DB_IMAGE:-zerostwo/shennong-db:latest}
     restart: unless-stopped
     init: true
     environment:
@@ -153,7 +153,7 @@ services:
     secrets:
       - db_admin_key
     volumes:
-      - ${SHENNONG_DB_DATA_DIR:?set the Shennong DB data directory}:/data
+      - ${SHENNONG_DB_DATA_DIR:-/srv/shennong.one/data/db}:/data
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -166,7 +166,7 @@ services:
       - control
 
   os-postgres:
-    image: ${SHENNONG_POSTGRES_IMAGE:?set a digest-pinned PostgreSQL image}
+    image: postgres:17.10-bookworm@sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394
     restart: unless-stopped
     environment:
       POSTGRES_DB: shennong_os
@@ -175,7 +175,7 @@ services:
     secrets:
       - os_postgres_password
     volumes:
-      - ${SHENNONG_OS_POSTGRES_DIR:?set the OS PostgreSQL data directory}:/var/lib/postgresql/data
+      - ${SHENNONG_OS_POSTGRES_DIR:-/srv/shennong.one/data/os-postgres}:/var/lib/postgresql/data
     shm_size: 256m
     cap_drop: [ALL]
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
@@ -190,7 +190,7 @@ services:
       - control
 
   runtime:
-    image: ${SHENNONG_RUNTIME_DAEMON_IMAGE:-shennong-runtime-daemon:1.0.0}
+    image: ${SHENNONG_RUNTIME_DAEMON_IMAGE:-zerostwo/shennong-runtime-daemon:latest}
     restart: unless-stopped
     read_only: true
     init: true
@@ -211,13 +211,13 @@ services:
       SHENNONG_ROOTLESS_DOCKER_SOCKET: /run/shennong-rootless/docker.sock
       SHENNONG_JOB_EGRESS_NETWORK: shennong-job-egress
       SHENNONG_SESSION_PROXY_NETWORK: shennong-session-proxy
-      SHENNONG_RUNTIME_INSTANCE_ID: ${SHENNONG_RUNTIME_INSTANCE_ID:?set a stable Runtime instance id}
+      SHENNONG_RUNTIME_INSTANCE_ID: ${SHENNONG_RUNTIME_INSTANCE_ID:-runtime-worker-1}
       SHENNONG_ROOTLESS_UID: ${SHENNONG_RUNTIME_UID:?set Runtime UID}
       SHENNONG_ROOTLESSKIT_CHILD_PID_FILE: /run/shennong-rootlesskit/child_pid
       SHENNONG_EGRESS_POLICY_STATE_FILE: /run/shennong-egress/policy-${SHENNONG_RUNTIME_UID:?set Runtime UID}.ready
       SHENNONG_JOB_BRIDGE: ${SHENNONG_JOB_BRIDGE:-sn-job-egress}
       SHENNONG_SESSION_BRIDGE: ${SHENNONG_SESSION_BRIDGE:-sn-session}
-      SHENNONG_RUNTIME_PROXY_V4: ${SHENNONG_RUNTIME_PROXY_V4:?set the exact Runtime proxy /32}
+      SHENNONG_RUNTIME_PROXY_V4: ${SHENNONG_RUNTIME_PROXY_V4:-10.252.0.1/32}
       SHENNONG_JWT_ALGORITHM: EdDSA
       SHENNONG_JWT_PUBLIC_KEY_FILE: /run/secrets/runtime_jwt_ed25519_public_key
       SHENNONG_JWT_ISSUER: shennong-os
@@ -227,12 +227,12 @@ services:
       SHENNONG_MAX_CONCURRENT_JOBS: ${SHENNONG_MAX_CONCURRENT_JOBS:-4}
       SHENNONG_MAX_CONCURRENT_SESSIONS: ${SHENNONG_MAX_CONCURRENT_SESSIONS:-2}
       SHENNONG_WORKER_PROFILES_JSON: |-
-        {"profiles":[{"name":"cpu-small","image":"${SHENNONG_WORKER_IMAGE:?set a digest-pinned worker image}","kind":"batch","max_resources":{"cpus":2.0,"memory_bytes":8589934592,"pids":256,"timeout_seconds":1800,"tmpfs_bytes":1073741824,"max_log_bytes":8388608,"max_artifact_bytes":2147483648,"max_workspace_bytes":21474836480}},{"name":"ide-small","image":"${SHENNONG_IDE_IMAGE:?set a digest-pinned IDE image}","kind":"ide","max_resources":{"cpus":4.0,"memory_bytes":17179869184,"pids":512,"timeout_seconds":28800,"tmpfs_bytes":2147483648,"max_log_bytes":16777216,"max_artifact_bytes":4294967296,"max_workspace_bytes":53687091200}}]}
+        {"profiles":[{"name":"cpu-small","image":"${SHENNONG_WORKER_IMAGE:-zerostwo/shennong-runtime-worker:latest}","kind":"batch","max_resources":{"cpus":2.0,"memory_bytes":8589934592,"pids":256,"timeout_seconds":1800,"tmpfs_bytes":1073741824,"max_log_bytes":8388608,"max_artifact_bytes":2147483648,"max_workspace_bytes":21474836480}},{"name":"ide-small","image":"${SHENNONG_IDE_IMAGE:-zerostwo/shennong-runtime-ide:latest}","kind":"ide","max_resources":{"cpus":4.0,"memory_bytes":17179869184,"pids":512,"timeout_seconds":28800,"tmpfs_bytes":2147483648,"max_log_bytes":16777216,"max_artifact_bytes":4294967296,"max_workspace_bytes":53687091200}}]}
     volumes:
       - ${SHENNONG_ROOTLESS_DOCKER_SOCKET:?set the rootless socket path}:/run/shennong-rootless/docker.sock
       - ${SHENNONG_ROOTLESSKIT_STATE_DIR:?set the RootlessKit state directory}:/run/shennong-rootlesskit:ro
-      - ${SHENNONG_EGRESS_POLICY_STATE_DIR:?set the egress attestation directory}:/run/shennong-egress:ro
-      - ${SHENNONG_RUNTIME_STATE_DIR:?set the Runtime state directory}:/var/lib/shennong-runtime
+      - ${SHENNONG_EGRESS_POLICY_STATE_DIR:-/run/shennong-runtime-egress}:/run/shennong-egress:ro
+      - ${SHENNONG_RUNTIME_STATE_DIR:-/srv/shennong.one/data/runtime}:/var/lib/shennong-runtime
     secrets:
       - runtime_jwt_ed25519_public_key
     tmpfs:
@@ -259,22 +259,22 @@ volumes:
 
 secrets:
   os_postgres_password:
-    file: ${SHENNONG_OS_POSTGRES_PASSWORD_FILE:?set OS PostgreSQL password file}
+    file: ${SHENNONG_SECRETS_DIR:-./secrets}/os-postgres-password
   os_database_url:
-    file: ${SHENNONG_OS_DATABASE_URL_FILE:?set OS database URL file}
+    file: ${SHENNONG_SECRETS_DIR:-./secrets}/os-database-url
   os_bootstrap_token:
-    file: ${SHENNONG_OS_BOOTSTRAP_TOKEN_FILE:?set bootstrap token file}
+    file: ${SHENNONG_SECRETS_DIR:-./secrets}/os-bootstrap-token
   os_invite_hmac_key:
-    file: ${SHENNONG_OS_INVITE_HMAC_KEY_FILE:?set invitation HMAC key file}
+    file: ${SHENNONG_SECRETS_DIR:-./secrets}/os-invite-hmac-key
   os_provider_encryption_key:
-    file: ${SHENNONG_OS_PROVIDER_ENCRYPTION_KEY_FILE:?set provider encryption key file}
+    file: ${SHENNONG_SECRETS_DIR:-./secrets}/os-provider-encryption-key
   db_admin_key:
-    file: ${SHENNONG_DB_ADMIN_KEY_FILE:?set DB admin key file}
+    file: ${SHENNONG_SECRETS_DIR:-./secrets}/db-admin-key
   runtime_jwt_ed25519_private_key:
-    file: ${SHENNONG_RUNTIME_JWT_ED25519_PRIVATE_KEY_FILE:?set Runtime JWT private-key file}
+    file: ${SHENNONG_SECRETS_DIR:-./secrets}/runtime-jwt-ed25519-private.pem
   runtime_jwt_ed25519_public_key:
-    file: ${SHENNONG_RUNTIME_JWT_ED25519_PUBLIC_KEY_FILE:?set Runtime JWT public-key file}
+    file: ${SHENNONG_SECRETS_DIR:-./secrets}/runtime-jwt-ed25519-public.pem
   agent_runtime_secret:
-    file: ${SHENNONG_AGENT_RUNTIME_SECRET_FILE:?set Agent Runtime secret file}
+    file: ${SHENNONG_SECRETS_DIR:-./secrets}/agent-runtime-secret
   os_service_token:
-    file: ${SHENNONG_OS_SERVICE_TOKEN_FILE:?set OS service token file}
+    file: ${SHENNONG_SECRETS_DIR:-./secrets}/os-service-token

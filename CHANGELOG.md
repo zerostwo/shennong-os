@@ -4,6 +4,17 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Publish the WebUI, control-plane server, and Agent Runtime images to Docker
+  Hub from `main`, version tags, and manual GitHub Actions runs.
+
+### Changed
+
+- Default the unified Compose deployment to public Docker Hub application
+  images and built-in data/secret paths, reducing the required `.env` surface
+  without weakening the Runtime isolation model.
+
 ## [1.0.0] - 2026-07-18
 
 ### Added
