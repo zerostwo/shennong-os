@@ -7,15 +7,66 @@ Skills, Memory, jobs, artifacts, provider credentials, and audited access to
 ShennongDB and Shennong Runtime.
 
 ShennongDB is a headless data plane. Shennong Runtime executes untrusted code
-through a dedicated rootless Docker daemon. A browser only connects to the
-Shennong OS WebUI; DB, Runtime, Agent Runtime, PostgreSQL, and IDE targets stay
-on internal networks.
+through Docker: the hardened profile uses a dedicated rootless daemon, while
+the three-image quick deployment uses the host socket and is limited to trusted
+single-user hosts. A browser only connects to the Shennong OS WebUI; DB,
+Runtime, Agent Runtime, PostgreSQL, and IDE targets stay on internal networks.
 
 Shennong OS is the sole authority for Project identity, lifecycle, membership,
 and RBAC. It synchronizes an idempotent Project shadow to ShennongDB for research
 graph and provenance foreign keys; ShennongDB never uses that shadow as an
 authorization source. Project data-plane calls perform a lazy synchronization
 first so projects created while DB was unavailable self-heal.
+
+## Architecture at a glance
+
+```mermaid
+flowchart TB
+    subgraph public["Public and browser trust zone"]
+        browser["Browser"]
+        gateway["Caddy gateway<br/>product host + isolated IDE host"]
+        web["Next.js WebUI / BFF"]
+        browser -->|"HTTPS"| gateway
+        gateway -->|"product host"| web
+    end
+
+    subgraph control["Shennong OS trusted control plane"]
+        os["Rust / Axum OS server<br/>identity, RBAC, durable orchestration"]
+        agent["Pi Agent Runtime<br/>governed reasoning only"]
+        postgres[("OS PostgreSQL<br/>users, projects, runs, audit")]
+        web -->|"session cookie + Origin + CSRF"| os
+        os -->|"runtime secret + authorized Run"| agent
+        agent -->|"service-token callbacks<br/>persist, approve, execute"| os
+        os --> postgres
+    end
+
+    subgraph data["Internal data and execution planes"]
+        db["Headless ShennongDB<br/>resources, revisions, provenance"]
+        runtime["Shennong Runtime<br/>jobs, sessions, journal"]
+        rootless["Docker execution backend<br/>dedicated rootless daemon when hardened"]
+        workload["Untrusted job / IDE containers"]
+        os -->|"RBAC checked + DB service key"| db
+        os -->|"short-lived scoped Ed25519 JWT"| runtime
+        runtime -->|"Docker socket<br/>rootless in hardened profile"| rootless
+        rootless --> workload
+    end
+
+    gateway -->|"IDE host: launch + session proxy only"| os
+    os -->|"exact session proxy scope"| runtime
+```
+
+The diagram shows logical trust boundaries; the default OS image co-locates the
+gateway, Web, server, Agent, and PostgreSQL processes without merging their
+credentials or responsibilities. The arrows are security boundaries, not just
+network connections. The browser
+never receives service credentials, Agent Runtime cannot call DB or Runtime
+directly, and OS never receives a Docker socket. In the quick profile only the
+Runtime container receives the host socket; this weakens workload isolation and
+is not the hardened production boundary. Durable control-plane state is owned
+by OS PostgreSQL; scientific catalog/provenance state is owned by ShennongDB;
+execution recovery state is owned by Runtime. See
+[`ARCHITECTURE.md`](ARCHITECTURE.md) for the request flows, state ownership,
+failure modes, cross-repository contracts, and deployment invariants.
 
 Uploads are available only inside an active Project. The Web BFF streams the
 file through an exact allowlisted route; OS enforces session/CSRF and
@@ -96,8 +147,9 @@ pnpm build
 See [`deploy/SIMPLE.md`](deploy/SIMPLE.md) for the default three-image quick
 deployment and [`deploy/README.md`](deploy/README.md) for the retained hardened
 profile. [`ARCHITECTURE.md`](ARCHITECTURE.md) is the frozen V1 architecture,
-security model, and acceptance contract; the OpenAPI document is the HTTP
-contract.
+security model, and acceptance contract; [`openapi/os-api.yaml`](openapi/os-api.yaml)
+is the browser and service-facing OS HTTP contract. Repository automation and
+change conventions are documented in [`AGENTS.md`](AGENTS.md).
 
 ## License
 
