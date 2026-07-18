@@ -4,7 +4,7 @@
 }
 
 :8080 {
-	@ide host {$SHENNONG_IDE_HOST}
+	@ide host {$SHENNONG_IDE_HOST:ide.localhost}
 	handle @ide {
 		@ide_launch path /__shennong/launch
 		handle @ide_launch {
