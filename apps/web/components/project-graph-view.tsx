@@ -15,6 +15,7 @@ import {
 } from "@/lib/api/adapter";
 import { AppShell, SectionHeader, TinyBadge, TopBar } from "./app-shell";
 import { ProjectApiError } from "./projects-view";
+import { StructuredValue } from "./structured-value";
 import { ProjectTabs } from "./project-tabs";
 
 const ProjectGraphCanvas = dynamic(
@@ -60,7 +61,7 @@ export function ProjectGraphView({ projectId }: { projectId: string }) {
       />
       <div className="workspace-page project-graph-page">
         <ProjectTabs projectId={projectId} active="graph" />
-        <SectionHeader title="Focused subgraph" description="Choose one root and 1–3 hops. ShennongDB never sends the entire project graph to the browser." />
+        <SectionHeader title="Focused subgraph" description="Choose one root and 1-3 hops. ShennongDB never sends the entire project graph to the browser." />
         <form className="graph-controls" onSubmit={focus}>
           <label><Search /><input aria-label="Graph root entity ID" value={rootDraft} onChange={(event) => setRootDraft(event.target.value)} placeholder={initialRoot || "No root entity available"} /></label>
           <label>Depth<select aria-label="Graph depth" value={depth} onChange={(event) => setDepth(Number(event.target.value))}><option value={1}>1 hop</option><option value={2}>2 hops</option><option value={3}>3 hops</option></select></label>
@@ -133,7 +134,7 @@ function EvidenceList({ rows }: { rows: JsonRecord[] }) {
 function JsonDetails({ value, empty }: { value: JsonRecord; empty: string }) {
   const entries = Object.entries(value);
   if (entries.length === 0) return <p>{empty}</p>;
-  return <dl className="compact-json">{entries.map(([key, item]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{typeof item === "object" ? JSON.stringify(item) : String(item)}</dd></div>)}</dl>;
+  return <StructuredValue value={value} />;
 }
 
 function StatePill({ state }: { state: BioGraphState }) {
@@ -144,6 +145,6 @@ function object(value: unknown): JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
 }
 
-function text(value: unknown, fallback = "—") {
+function text(value: unknown, fallback = "Not available") {
   return typeof value === "string" && value.length > 0 ? value : fallback;
 }

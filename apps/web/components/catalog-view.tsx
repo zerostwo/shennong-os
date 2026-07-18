@@ -183,7 +183,7 @@ export function CatalogView() {
           )}
         </div>
         <div className="table-footer">
-          <span>{pageStart}–{pageEnd} of {allRows.length}</span>
+          <span>{pageStart}-{pageEnd} of {allRows.length}</span>
           <div className="pagination-actions"><button className="icon-button" aria-label="Previous page" disabled={page === 0} onClick={() => setPage((value) => value - 1)}><ChevronLeft /></button><span>Page {page + 1} of {pageCount}</span><button className="icon-button" aria-label="Next page" disabled={page + 1 >= pageCount} onClick={() => setPage((value) => value + 1)}><ChevronRight /></button></div>
         </div>
       </div>

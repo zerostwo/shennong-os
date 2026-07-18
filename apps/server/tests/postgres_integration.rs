@@ -293,8 +293,8 @@ async fn migrations_bootstrap_and_agent_gateway_security_contracts() {
     let project_a = Uuid::new_v4();
     let project_b = Uuid::new_v4();
     sqlx::query(
-        "INSERT INTO users(id,email,email_normalized,display_name,password_hash,role) \
-         VALUES($1,'agent-user@example.test','agent-user@example.test','Agent user','test-only','user')",
+        "INSERT INTO users(id,email,email_normalized,display_name,username,password_hash,role) \
+         VALUES($1,'agent-user@example.test','agent-user@example.test','Agent user','agent-user','test-only','user')",
     )
     .bind(user_id)
     .execute(&pool)

@@ -28,9 +28,10 @@ test.beforeEach(async ({ page }, testInfo) => {
   }
 });
 
-test("capture Project-boundary home", async ({ page }, testInfo) => {
+test("capture personal-chat home", async ({ page }, testInfo) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Choose a research project" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What can I help you analyze?" })).toBeVisible();
+  await expect(page.getByPlaceholder("Ask Shennong")).toBeVisible();
   await page.screenshot({ path: await screenshotPath(testInfo, "home"), fullPage: false });
 });
 

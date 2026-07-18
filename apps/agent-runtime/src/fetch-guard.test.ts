@@ -49,6 +49,36 @@ test("Ollama is limited to the local OpenAI-compatible endpoint", async () => {
   await assert.rejects(unsafe("http://localhost:11435/v1/chat/completions"), /ollama_url_not_allowed/);
 });
 
+test("llama.cpp is limited to the local reasoning adapter endpoint", async () => {
+  let target = "";
+  const guarded = createProviderFetchGuard({
+    getPolicy: () => ({ kind: "llama-cpp", baseUrl: "http://host.docker.internal:8081/v1" }),
+    resolveHost: async () => [{ address: "172.17.0.1", family: 4 }],
+    transport: async (request) => {
+      target = request.url;
+      return new Response("{}", { status: 200 });
+    },
+  });
+  const response = await guarded("http://host.docker.internal:8081/v1/chat/completions", { method: "POST" });
+  assert.equal(response.status, 200);
+  assert.equal(target, "http://host.docker.internal:8081/v1/chat/completions");
+
+  const unsafePort = createProviderFetchGuard({
+    getPolicy: () => ({ kind: "llama-cpp", baseUrl: "http://host.docker.internal:8080/v1" }),
+  });
+  await assert.rejects(
+    unsafePort("http://host.docker.internal:8080/v1/chat/completions"),
+    /llama-cpp_url_not_allowed/,
+  );
+  const unsafePath = createProviderFetchGuard({
+    getPolicy: () => ({ kind: "llama-cpp", baseUrl: "http://host.docker.internal:8081" }),
+  });
+  await assert.rejects(
+    unsafePath("http://host.docker.internal:8081/chat/completions"),
+    /llama-cpp_url_not_allowed/,
+  );
+});
+
 test("provider redirects are never followed", async () => {
   const guarded = createProviderFetchGuard({
     getPolicy: () => ({ kind: "deepseek", baseUrl: "https://provider.example/v1" }),

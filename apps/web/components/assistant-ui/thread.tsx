@@ -5,16 +5,21 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
   type MessageState,
+  useAssistantRuntime,
 } from "@assistant-ui/react";
 import {
   useAgUiInterrupts,
   useAgUiSubmitInterruptResponses,
 } from "@assistant-ui/react-ag-ui";
-import { ArrowDown, ArrowUp, Bot, Check, CircleStop, Database, FileText, LoaderCircle, Puzzle, ShieldAlert, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { ArrowDown, ArrowUp, Bot, Check, CircleStop, Database, FileText, LoaderCircle, Paperclip, Puzzle, ShieldAlert, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { useShennongAssistantRuntime } from "@/components/assistant-ui/runtime-provider";
 import { disableThreadSkill, enableThreadSkill, listThreadSkills, type AgentSkillRecord } from "@/lib/api/adapter";
+import { buildProjectUploadPrompt, registerProjectFiles } from "@/lib/project-upload";
+import projectStyles from "@/components/project-ui.module.css";
+import { StructuredValue } from "@/components/structured-value";
 
 function textFromPart(part: MessageState["content"][number]) {
   return part.type === "text" ? part.text : "";
@@ -27,8 +32,8 @@ function ToolCard({ part }: { part: Extract<MessageState["content"][number], { t
   return (
     <section className={`aui-tool-card ${running ? "running" : failed ? "failed" : "complete"}`}>
       <header><Icon /><strong>{part.toolName}</strong><span>{running ? <><LoaderCircle />Running</> : failed ? <><X />Failed</> : <><Check />Complete</>}</span></header>
-      {part.args && Object.keys(part.args).length ? <details><summary>Inputs</summary><pre>{JSON.stringify(part.args, null, 2)}</pre></details> : null}
-      {"result" in part && part.result !== undefined ? <details><summary>Result</summary><pre>{typeof part.result === "string" ? part.result : JSON.stringify(part.result, null, 2)}</pre></details> : null}
+      {part.args && Object.keys(part.args).length ? <details><summary>Inputs</summary><div className="tool-structured-value"><StructuredValue value={part.args} /></div></details> : null}
+      {"result" in part && part.result !== undefined ? <details><summary>Result</summary><div className="tool-structured-value"><StructuredValue value={part.result} /></div></details> : null}
     </section>
   );
 }
@@ -124,9 +129,70 @@ export function ThreadSkillSelector() {
   );
 }
 
-export function ShennongThread({ projectName }: { projectName?: string }) {
+function ComposerPrefill({ prompt }: { prompt?: string }) {
+  const runtime = useAssistantRuntime();
+  const applied = useRef("");
+  useEffect(() => {
+    if (!prompt || applied.current === prompt) return;
+    if (!runtime.thread.composer.getState().text.trim()) runtime.thread.composer.setText(prompt);
+    applied.current = prompt;
+  }, [prompt, runtime]);
+  return null;
+}
+
+function ProjectFileUploadButton({ projectId }: { projectId: string }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const runtime = useAssistantRuntime();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function select(files: File[]) {
+    if (!files.length) return;
+    if (files.length > 20) {
+      setError("Upload no more than 20 related files at once.");
+      return;
+    }
+    const invalid = files.find((file) => file.size === 0 || file.size > 50 * 1024 * 1024 * 1024);
+    if (invalid) {
+      setError(`${invalid.name} must be non-empty and no larger than 50 GiB.`);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const background = runtime.thread.composer.getState().text.slice(0, 4000);
+      const result = await registerProjectFiles(projectId, files, background);
+      runtime.thread.composer.setText(buildProjectUploadPrompt(result, background));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects", projectId, "context-pack"] }),
+        queryClient.invalidateQueries({ queryKey: ["projects", projectId, "resources"] }),
+      ]);
+      setMessage(`${result.resourceName} is registered. Review the message and send it to the Agent.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Files could not be uploaded");
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return <>
+    <input ref={inputRef} type="file" multiple hidden onChange={(event) => void select(Array.from(event.target.files ?? []))} />
+    <button type="button" className={projectStyles.composerAttach} disabled={busy} onClick={() => inputRef.current?.click()} aria-label="Attach Project files" title="Upload files into this Project">
+      {busy ? <LoaderCircle className="spin" /> : <Paperclip />}
+    </button>
+    {message ? <span className={projectStyles.composerUploadStatus} role="status">{message}<button type="button" onClick={() => setMessage("")} aria-label="Dismiss upload status"><X /></button></span> : null}
+    {error ? <span className={projectStyles.composerUploadError} role="alert">{error}<button type="button" onClick={() => setError("")} aria-label="Dismiss upload error"><X /></button></span> : null}
+  </>;
+}
+
+export function ShennongThread({ projectName, projectId, initialPrompt }: { projectName?: string; projectId?: string; initialPrompt?: string }) {
   return (
     <ThreadPrimitive.Root className="aui-thread-root">
+      <ComposerPrefill prompt={initialPrompt} />
       <ThreadPrimitive.Viewport className="aui-thread-viewport">
         <ThreadPrimitive.Empty>
           <section className="chat-empty-state">
@@ -147,6 +213,7 @@ export function ShennongThread({ projectName }: { projectName?: string }) {
             <ComposerPrimitive.Input className="aui-composer-input" placeholder={projectName ? `Ask about ${projectName}` : "Ask Shennong"} rows={1} autoFocus />
             <div className="chat-composer-toolbar">
               <span className="aui-composer-note">Generated code runs in an isolated Runtime.</span>
+              {projectId ? <ProjectFileUploadButton projectId={projectId} /> : null}
               <ComposerPrimitive.Send className="aui-send" aria-label="Send message"><ArrowUp /></ComposerPrimitive.Send>
               <ComposerPrimitive.Cancel className="aui-cancel" aria-label="Stop generation"><CircleStop /></ComposerPrimitive.Cancel>
             </div>

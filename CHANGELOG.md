@@ -15,6 +15,23 @@ The format is based on [Keep a Changelog 1.1.0], and this project adheres to
   credentials and needs only the OS, DB, and Runtime images.
 - Add a repository-specific `AGENTS.md` and a local CodeGraph bootstrap rule for
   code-aware maintenance without committing generated index data.
+- Add a dedicated `llama-cpp` provider kind for the loopback Bonsai reasoning
+  adapter at `host.docker.internal:8081/v1`, including server validation,
+  Agent Runtime fetch isolation, OpenAPI, migration, and WebUI settings.
+- Add a control-bridge-only systemd socket proxy for the loopback llama.cpp
+  reasoning adapter.
+- Add administrator-only Resource provider discovery and installation proxies
+  so the unified WebUI can install governed ShennongDB datasets without
+  exposing the internal service credential.
+- Add owner-private personal Agent threads so users can chat without selecting
+  a Project, while keeping Project data and tools behind explicit Project RBAC.
+- Add persistent user profiles with unique usernames, display names, and
+  bounded PNG, JPEG, or WebP avatars.
+- Add a production operations center for real control-plane health, users,
+  model providers, resource providers, invitations, registration, and audit
+  data, with unsupported backup operations labeled explicitly.
+- Add a standalone Plugins and Skills workspace backed by the capabilities and
+  versioned Skill APIs currently exposed by Shennong.
 
 ### Changed
 
@@ -27,6 +44,24 @@ The format is based on [Keep a Changelog 1.1.0], and this project adheres to
 - Visualize the system, trust boundaries, and request flow in the README and
   document implementation mapping, state ownership, cross-repository contracts,
   and failure semantics in the V1 architecture contract.
+- Unify WebUI shell geometry, page gutters, typography, surface colors, active
+  navigation, and primary actions around one restrained scientific teal token
+  set while preserving the existing information architecture.
+- Adapt Agent `db.query_resource` calls to the current ShennongDB typed feature
+  and bounded options contract, and pin the local model host alias to the fixed
+  control-network gateway instead of Docker's machine-wide host gateway.
+- Simplify Projects around a default list view, an Agent-first workspace, and
+  direct chat uploads that register private resources before handing durable
+  `project://` references to the Agent.
+- Move global Docs and search into the sidebar, remove duplicate top-bar
+  controls, reorganize Settings, anchor resource drawers, and replace raw JSON
+  records with recursive structured values across product surfaces.
+
+### Security
+
+- Prevent administrators from disabling or demoting the final active
+  administrator, and revoke a user's active sessions when that account is
+  disabled.
 
 ## [1.0.0] - 2026-07-18
 

@@ -210,12 +210,17 @@ pub fn validate_provider_url(kind: &str, raw: &str) -> Result<String, ApiError> 
     let host = url
         .host_str()
         .ok_or_else(|| ApiError::invalid("provider host is required"))?;
-    let local_ollama = kind == "ollama"
+    let local_provider_port = match kind {
+        "ollama" => Some(11_434),
+        "llama-cpp" => Some(8_081),
+        _ => None,
+    };
+    let local_provider = local_provider_port.is_some()
         && matches!(host, "localhost" | "127.0.0.1" | "host.docker.internal")
         && url.scheme() == "http"
-        && url.port() == Some(11_434)
+        && url.port() == local_provider_port
         && url.path().trim_end_matches('/') == "/v1";
-    if local_ollama {
+    if local_provider {
         return Ok(raw.trim().trim_end_matches('/').to_owned());
     }
     if url.scheme() != "https"
@@ -277,6 +282,8 @@ mod tests {
         assert!(validate_provider_url("openai-compatible", "http://10.0.0.2/v1").is_err());
         assert!(validate_provider_url("openai", "https://api.openai.com/v1").is_ok());
         assert!(validate_provider_url("ollama", "http://host.docker.internal:11434/v1").is_ok());
+        assert!(validate_provider_url("llama-cpp", "http://host.docker.internal:8081/v1").is_ok());
+        assert!(validate_provider_url("llama-cpp", "http://host.docker.internal:8080/v1").is_err());
     }
 
     #[test]

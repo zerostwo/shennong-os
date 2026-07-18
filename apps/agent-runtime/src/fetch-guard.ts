@@ -18,7 +18,7 @@ export interface ResolvedAddress {
 export type ResolveHost = (hostname: string) => Promise<ResolvedAddress[]>;
 export type FetchTransport = (request: Request, address: ResolvedAddress) => Promise<Response>;
 
-const OLLAMA_HOSTS = new Set(["localhost", "127.0.0.1", "host.docker.internal"]);
+const LOCAL_PROVIDER_HOSTS = new Set(["localhost", "127.0.0.1", "host.docker.internal"]);
 const nonPublicIpv4 = new BlockList();
 const nonPublicIpv6 = new BlockList();
 const localIpv4 = new BlockList();
@@ -85,13 +85,14 @@ function basePath(url: URL): string {
 function assertProviderBase(policy: ProviderFetchPolicy): URL {
   const base = parseUrl(policy.baseUrl);
   if (base.search) throw new Error("provider_url_invalid");
-  if (policy.kind === "ollama") {
+  if (policy.kind === "ollama" || policy.kind === "llama-cpp") {
+    const expectedPort = policy.kind === "ollama" ? "11434" : "8081";
     if (
       base.protocol !== "http:" ||
-      !OLLAMA_HOSTS.has(base.hostname) ||
-      base.port !== "11434" ||
+      !LOCAL_PROVIDER_HOSTS.has(base.hostname) ||
+      base.port !== expectedPort ||
       basePath(base) !== "/v1"
-    ) throw new Error("ollama_url_not_allowed");
+    ) throw new Error(`${policy.kind}_url_not_allowed`);
     return base;
   }
   if (base.protocol !== "https:") throw new Error("provider_https_required");
@@ -119,8 +120,8 @@ async function resolveAndValidate(
 ): Promise<ResolvedAddress> {
   const addresses = await resolveHost(bareHostname(target.hostname));
   if (!addresses.length) throw new Error("provider_host_unresolved");
-  if (policy.kind === "ollama") {
-    if (addresses.some(({ address }) => !isLocalAddress(address))) throw new Error("ollama_host_not_local");
+  if (policy.kind === "ollama" || policy.kind === "llama-cpp") {
+    if (addresses.some(({ address }) => !isLocalAddress(address))) throw new Error(`${policy.kind}_host_not_local`);
   } else if (addresses.some(({ address }) => !isPublicAddress(address))) {
     throw new Error("provider_host_not_public");
   }

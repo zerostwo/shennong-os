@@ -53,6 +53,7 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
 export async function listOsThreads(projectId?: string): Promise<OsThread[]> {
   const query = new URLSearchParams();
   if (projectId) query.set("project_id", projectId);
+  else query.set("scope", "personal");
   const value = await request(`/threads${query.size ? `?${query}` : ""}`);
   return rows(value, "threads").map((item) => ({
     id: String(item.id ?? ""),

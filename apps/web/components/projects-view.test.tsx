@@ -37,6 +37,17 @@ describe("ProjectsView", () => {
     expect(await screen.findByRole("heading", { name: "Tumor atlas" })).toBeInTheDocument();
     expect(screen.getByText("Real project")).toBeInTheDocument();
     expect(screen.queryByText(/demo/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("persists the selected Project view", async () => {
+    const user = userEvent.setup();
+    mocks.listProjects.mockResolvedValue([{ id: "project-1", name: "Tumor atlas", description: "Real project", status: "active", visibility: "private", ownerUserId: "user-1", createdAt: "", updatedAt: "", counts: {}, raw: {} }]);
+    renderWithClient(<ProjectsView />);
+    await screen.findByRole("heading", { name: "Tumor atlas" });
+    await user.click(screen.getByRole("button", { name: "Grid view" }));
+    expect(window.localStorage.getItem("shennong-project-view")).toBe("grid");
+    expect(screen.getByRole("button", { name: "Grid view" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("creates a project through the adapter and navigates only after success", async () => {

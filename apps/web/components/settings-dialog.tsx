@@ -8,12 +8,15 @@ import {
   Brain,
   Check,
   CircleOff,
+  CircleUserRound,
+  Command,
   MonitorCog,
   Pencil,
   Plus,
   Puzzle,
   Trash2,
   WandSparkles,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   createAiProvider,
@@ -32,12 +35,14 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { MemoryManager } from "@/components/memory-manager";
 
 export type { SettingsSection } from "@/lib/settings-route";
-type Session = { authenticated: boolean; user_id: string; role: string } | null;
+type Session = { authenticated: boolean; user_id: string; role: string; display_name?: string; username?: string; avatar_url?: string } | null;
 
 const sections = [
+  ["account", "Account", CircleUserRound],
   ["general", "General", MonitorCog],
   ["models", "Models", Bot],
-  ["skills", "Skills", Puzzle],
+  ["personalization", "Personalization", SlidersHorizontal],
+  ["keyboard", "Keyboard", Command],
   ["memory", "Memory", Brain],
 ] as const;
 
@@ -45,6 +50,7 @@ const providerDefaults: Record<AiProviderRecord["providerType"], { baseUrl: stri
   openai: { baseUrl: "https://api.openai.com/v1" },
   deepseek: { baseUrl: "https://api.deepseek.com" },
   ollama: { baseUrl: "http://host.docker.internal:11434/v1" },
+  "llama-cpp": { baseUrl: "http://host.docker.internal:8081/v1" },
   "openai-compatible": { baseUrl: "" },
 };
 
@@ -52,6 +58,7 @@ const providerLabels: Record<AiProviderRecord["providerType"], string> = {
   openai: "OpenAI",
   deepseek: "DeepSeek",
   ollama: "Ollama",
+  "llama-cpp": "llama.cpp",
   "openai-compatible": "OpenAI-compatible",
 };
 
@@ -64,7 +71,6 @@ export function SettingsDialog({ open, onOpenChange, onSectionChange, session, i
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">Configure Shennong workspace and account preferences.</DialogDescription>
         <aside className="settings-nav" aria-label="Settings sections">
-          <h2>Settings</h2>
           {sections.map(([value, label, Icon]) => (
             <button key={value} className={section === value ? "active" : ""} onClick={() => { setSection(value); onSectionChange?.(value); }}>
               <Icon />
@@ -73,13 +79,28 @@ export function SettingsDialog({ open, onOpenChange, onSectionChange, session, i
           ))}
         </aside>
         <div className="settings-content">
+          {section === "account" && <AccountSettings session={session} />}
           {section === "general" && <GeneralSettings />}
           {section === "models" && <ModelSettings authenticated={Boolean(session?.authenticated)} />}
-          {section === "skills" && <SkillsSettings authenticated={Boolean(session?.authenticated)} />}
+          {section === "personalization" && <PersonalizationSettings />}
+          {section === "keyboard" && <KeyboardSettings />}
           {section === "memory" && <MemorySettings authenticated={Boolean(session?.authenticated)} />}
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function AccountSettings({ session }: { session: Session }) {
+  return (
+    <SettingsPanel title="Account">
+      {!session?.authenticated ? <SettingsEmpty title="Sign in to manage your account." /> : <>
+        <SettingRow label="Display name" description="Shown across Shennong"><span>{session.display_name || session.user_id}</span></SettingRow>
+        <SettingRow label="Username" description="Your short account identifier"><span>{session.username ? `@${session.username}` : "Not set"}</span></SettingRow>
+        <SettingRow label="Role"><span className="settings-account-role">{session.role}</span></SettingRow>
+        <button className="settings-command settings-edit-profile" onClick={() => window.dispatchEvent(new Event("shennong:open-profile"))}>Edit profile</button>
+      </>}
+    </SettingsPanel>
   );
 }
 
@@ -103,6 +124,26 @@ function GeneralSettings() {
         </div>
       </SettingRow>
       <SettingRow label="Search shortcut"><kbd>Ctrl / ⌘ K</kbd></SettingRow>
+    </SettingsPanel>
+  );
+}
+
+function PersonalizationSettings() {
+  return (
+    <SettingsPanel title="Personalization">
+      <div className="settings-guidance"><strong>Personal preferences live in Memory</strong><p>Add writing preferences, domain context, or recurring instructions to global Memory so the Agent can reuse them transparently.</p></div>
+      <SettingRow label="Preference scope" description="Applied across non-Project and Project chats"><span>Global Memory</span></SettingRow>
+    </SettingsPanel>
+  );
+}
+
+function KeyboardSettings() {
+  return (
+    <SettingsPanel title="Keyboard">
+      <SettingRow label="Search"><kbd>Ctrl / ⌘ K</kbd></SettingRow>
+      <SettingRow label="Close dialog"><kbd>Esc</kbd></SettingRow>
+      <SettingRow label="Send message"><kbd>Enter</kbd></SettingRow>
+      <SettingRow label="New line"><kbd>Shift Enter</kbd></SettingRow>
     </SettingsPanel>
   );
 }
@@ -199,7 +240,7 @@ function ProviderForm({ provider, onCancel, onSaved }: { provider: AiProviderRec
     <form className="provider-form" onSubmit={submit}>
       <div className="provider-form-heading"><h3>{provider ? "Edit model connection" : "Add model connection"}</h3><button type="button" className="settings-text-button" onClick={onCancel}>Cancel</button></div>
       <div className="provider-form-grid">
-        <label className="wide">Provider<select value={type} onChange={(event) => changeType(event.target.value as AiProviderRecord["providerType"])} autoFocus disabled={Boolean(provider)}><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="ollama">Ollama</option><option value="openai-compatible">OpenAI-compatible</option></select></label>
+        <label className="wide">Provider<select value={type} onChange={(event) => changeType(event.target.value as AiProviderRecord["providerType"])} autoFocus disabled={Boolean(provider)}><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="ollama">Ollama</option><option value="llama-cpp">llama.cpp</option><option value="openai-compatible">OpenAI-compatible</option></select></label>
         {type !== "ollama" ? <label className="wide">API key<input value={apiKey} onChange={(event) => setApiKey(event.target.value)} type="password" autoComplete="off" placeholder={provider?.hasApiKey ? "Leave blank to use the saved key" : "Paste API key"} /></label> : null}
         {type === "openai-compatible" ? <label className="wide">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://provider.example/v1" required /></label> : null}
         <label className="wide">Model ID<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="e.g. gpt-5-mini" required /></label>
@@ -213,7 +254,7 @@ function ProviderForm({ provider, onCancel, onSaved }: { provider: AiProviderRec
   );
 }
 
-function SkillsSettings({ authenticated }: { authenticated: boolean }) {
+export function SkillsSettings({ authenticated, standalone = false }: { authenticated: boolean; standalone?: boolean }) {
   const [skills, setSkills] = useState<AgentSkillRecord[]>([]);
   const [mode, setMode] = useState<"list" | "custom" | "guided">("list");
   const [editing, setEditing] = useState<AgentSkillRecord | null>(null);
@@ -290,7 +331,7 @@ function SkillsSettings({ authenticated }: { authenticated: boolean }) {
 
   const actions = authenticated ? <div className="skill-header-actions"><button className="settings-secondary" onClick={() => { setEditing(null); setMode("guided"); }}><WandSparkles />Guided draft</button><button className="settings-command" onClick={() => { setEditing(null); setMode("custom"); }}><Plus />Add custom</button></div> : undefined;
   return (
-    <SettingsPanel title="Skills" action={actions}>
+    <SettingsPanel title="Skills" action={actions} className={standalone ? "plugin-skills-panel" : undefined}>
       {!authenticated ? <SettingsEmpty title="Sign in to manage Agent Skills." /> : loading ? <SettingsEmpty title="Loading Skills…" /> : (
         <>
           {error ? <div className="settings-error" role="alert">{error}</div> : null}
@@ -317,8 +358,8 @@ function MemorySettings({ authenticated }: { authenticated: boolean }) {
   return <SettingsPanel title="Memory">{authenticated ? <MemoryManager /> : <SettingsEmpty title="Sign in to manage global memory." />}</SettingsPanel>;
 }
 
-function SettingsPanel({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return <section className="settings-panel"><header><h2>{title}</h2>{action}</header><div className="settings-panel-body">{children}</div></section>;
+function SettingsPanel({ title, action, children, className }: { title: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
+  return <section className={className ?? "settings-panel"}><header><h2>{title}</h2>{action}</header><div className="settings-panel-body">{children}</div></section>;
 }
 
 function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {

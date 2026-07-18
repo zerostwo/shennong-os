@@ -3,6 +3,9 @@ export type AuthSession = {
   user_id: string;
   role: string;
   scopes: string[];
+  display_name?: string;
+  username?: string;
+  avatar_url?: string;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -35,10 +38,16 @@ export function normalizeAuthSession(value: unknown): AuthSession {
   if (root.authenticated === false) {
     return { authenticated: false, user_id: "", role: "", scopes: [] };
   }
+  const displayName = typeof root.display_name === "string" ? root.display_name : typeof user.display_name === "string" ? user.display_name : undefined;
+  const username = typeof root.username === "string" ? root.username : typeof user.username === "string" ? user.username : undefined;
+  const avatarUrl = typeof root.avatar_url === "string" ? root.avatar_url : typeof user.avatar_url === "string" ? user.avatar_url : undefined;
   return {
     authenticated: root.authenticated === true || Boolean(userId && role),
     user_id: userId,
     role,
     scopes,
+    display_name: displayName,
+    username,
+    avatar_url: avatarUrl,
   };
 }

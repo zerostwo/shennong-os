@@ -43,7 +43,7 @@ describe("ProjectGraphView", () => {
     ]);
   });
 
-  it("requests a bounded 1–3 hop graph and fetches evidence for the selected association", async () => {
+  it("requests a bounded 1-3 hop graph and fetches evidence for the selected association", async () => {
     const user = userEvent.setup();
     renderWithClient(<ProjectGraphView projectId="project-1" />);
 
