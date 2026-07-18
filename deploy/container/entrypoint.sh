@@ -94,6 +94,8 @@ web_pid=$!
 SHENNONG_IDE_HOST=$ide_host caddy run --config /etc/shennong/Caddyfile --adapter caddyfile &
 caddy_pid=$!
 
+# Invoked indirectly by the signal/EXIT traps below.
+# shellcheck disable=SC2329
 shutdown() {
   trap - INT TERM EXIT
   kill -TERM "$caddy_pid" "$web_pid" "$server_pid" "$agent_pid" 2>/dev/null || true
