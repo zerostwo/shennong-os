@@ -15,6 +15,7 @@ import {
 } from "@/lib/api/adapter";
 import { AppShell, SectionHeader, TinyBadge, TopBar } from "./app-shell";
 import { ProjectApiError } from "./projects-view";
+import { StructuredValue } from "./structured-value";
 import { ProjectTabs } from "./project-tabs";
 
 const ProjectGraphCanvas = dynamic(
@@ -133,7 +134,7 @@ function EvidenceList({ rows }: { rows: JsonRecord[] }) {
 function JsonDetails({ value, empty }: { value: JsonRecord; empty: string }) {
   const entries = Object.entries(value);
   if (entries.length === 0) return <p>{empty}</p>;
-  return <dl className="compact-json">{entries.map(([key, item]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{typeof item === "object" ? JSON.stringify(item) : String(item)}</dd></div>)}</dl>;
+  return <StructuredValue value={value} />;
 }
 
 function StatePill({ state }: { state: BioGraphState }) {

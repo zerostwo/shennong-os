@@ -1,2 +1,2 @@
-import { redirect } from "next/navigation";
-export default function BackupsPage() { redirect("/admin/invites"); }
+import { AdminSectionView } from "@/components/admin-section-view";
+export default function BackupsPage() { return <AdminSectionView section="backups" />; }

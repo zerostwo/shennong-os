@@ -3,18 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Activity,
-  ArrowRight,
-  Beaker,
-  Boxes,
-  Database,
-  FlaskConical,
-  GitBranch,
-  Network,
-  ShieldAlert,
-  UploadCloud,
-} from "lucide-react";
+import { Activity, ArrowRight, Beaker, Boxes, Database, FlaskConical, FolderUp, GitBranch, MessageSquare, Network, ShieldAlert, SlidersHorizontal } from "lucide-react";
 import {
   getProjectContextPack,
   listProjectActivities,
@@ -23,10 +12,11 @@ import {
   type JsonRecord,
   type ProjectContextPack,
 } from "@/lib/api/adapter";
-import { AppShell, SectionHeader, TinyBadge, TopBar } from "./app-shell";
+import { AppShell, TinyBadge, TopBar } from "./app-shell";
 import { ProjectApiError } from "./projects-view";
 import { ProjectObservationTable } from "./project-observation-table";
 import { ProjectTabs } from "./project-tabs";
+import styles from "./project-ui.module.css";
 
 const projectKey = (projectId: string) => ["projects", projectId] as const;
 
@@ -43,135 +33,121 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   return (
     <AppShell active="projects">
       <TopBar
-        title={context.data?.project.name ?? "Project workspace"}
-        description={context.data?.project.description || `Project ${projectId}`}
+        title={context.data?.project.name ?? "Project"}
+        description={context.data?.project.description || `Research workspace ${projectId}`}
         search={false}
-        action={
-          <div className="project-top-actions">
-            <Link className="primary-button" href={`/projects/${encodeURIComponent(projectId)}/uploads/new`}><UploadCloud />Upload data</Link>
-            <Link className="outline-button" href={`/projects/${encodeURIComponent(projectId)}/graph`}><Network />Open BioGraph</Link>
-          </div>
-        }
+        action={<Link className="primary-button" href={`/projects/${encodeURIComponent(projectId)}/chat`}><MessageSquare />Chat with Agent</Link>}
       />
       <div className="workspace-page project-workspace-page">
         <ProjectTabs projectId={projectId} active="workspace" />
         {context.error ? <ProjectApiError error={context.error} /> : null}
-        {context.isPending ? <div className="loading-state">Loading the project context pack…</div> : null}
-        {context.data?.truncated ? <div className="project-limit-notice" role="status"><ShieldAlert /><span><strong>Context pack reached its server limit.</strong> The workspace is showing the bounded pack until you request the complete lists.</span><button className="outline-button" disabled={loadFullLists} onClick={() => setLoadFullLists(true)}>{loadFullLists ? "Loading full lists…" : "Load complete lists"}</button></div> : null}
-        <section className="project-overview-grid" aria-label="Project overview">
-          <Metric icon={<FlaskConical />} label="Studies" value={context.data ? String(context.data.studies.length) : "Not available"} loading={context.isPending} />
-          <Metric icon={<Database />} label="Entities" value={entities ? String(entities.length) : "Not available"} loading={context.isPending || fullEntities.isFetching} />
-          <Metric icon={<Activity />} label="Activities" value={activities ? String(activities.length) : "Not available"} loading={context.isPending || fullActivities.isFetching} />
-          <Metric icon={<Boxes />} label="Resources" value={resources ? String(resources.length) : "Not available"} loading={context.isPending || fullResources.isFetching} />
-        </section>
-
-        <section className="project-panel context-pack-panel">
-          <SectionHeader title="Agent context pack" description="Bounded, permission-filtered context returned by ShennongDB. This is not an LLM-generated browser summary." />
-          {context.data ? <ContextPackDetails context={context.data} /> : null}
-        </section>
-
-        <div className="project-section-grid">
-          <section className="project-panel">
-            <SectionHeader title="Studies" description="Study records supplied by the project context pack." />
-            {context.data ? <StudyList rows={context.data.studies} /> : null}
-          </section>
-          <section className="project-panel">
-            <SectionHeader title="Resources" description="Versioned data products linked to this project." />
-            {fullResources.error ? <ProjectApiError error={fullResources.error} compact /> : null}
-            {fullResources.isFetching ? <div className="loading-state">Loading complete resource list…</div> : null}
-            {resources ? (
-              <div className="project-object-list">
-                {resources.map((resource) => (
-                    <Link key={resource.id} href={`/resources/${encodeURIComponent(resource.id)}`}>
-                    <span className="project-object-icon"><Boxes /></span>
-                    <span><strong>{resource.name}</strong><small>{resource.id} · {resource.backend}</small></span>
-                    <TinyBadge tone={resource.visibility === "Private" ? "amber" : "green"}>{resource.visibility}</TinyBadge>
-                    <ArrowRight />
-                  </Link>
-                ))}
-                {resources.length === 0 ? <ProjectEmpty label="No resources are linked to this project." /> : null}
+        {context.isPending ? <div className="loading-state">Loading project…</div> : null}
+        {context.data ? (
+          <>
+            <section className={styles.workspaceSummary} aria-label="Project next steps and status">
+              <div className={styles.primaryFlow}>
+                <h2>Continue your research</h2>
+                <p>Work with the Agent to add data, plan analyses, and keep the Project organized.</p>
+                <Link className={styles.primaryAction} href={`/projects/${encodeURIComponent(projectId)}/chat`}>
+                  <MessageSquare />
+                  <span><strong>Open Project chat</strong><small>Ask a question or attach experimental files for the Agent to organize.</small></span>
+                  <ArrowRight />
+                </Link>
+                <div className={styles.secondaryActions}>
+                  <Link href={`/projects/${encodeURIComponent(projectId)}/uploads/new`}><FolderUp />Add data</Link>
+                  <Link href={`/projects/${encodeURIComponent(projectId)}/graph`}><Network />Explore BioGraph</Link>
+                  <Link href={`/projects/${encodeURIComponent(projectId)}/compute`}><SlidersHorizontal />Compute</Link>
+                </div>
               </div>
+              <div className={styles.statusPanel}>
+                <h2>Research status</h2>
+                <p>A compact view of the persisted Project boundary.</p>
+                <div className={styles.statusLine}><strong>{context.data.project.status || "active"}</strong><TinyBadge tone={context.data.project.visibility === "private" ? "amber" : "green"}>{context.data.project.visibility}</TinyBadge></div>
+                <div className={styles.metricStrip}>
+                  <Metric label="Studies" value={context.data.studies.length} />
+                  <Metric label="Entities" value={entities?.length} />
+                  <Metric label="Activities" value={activities?.length} />
+                  <Metric label="Resources" value={resources?.length} />
+                </div>
+              </div>
+            </section>
+
+            {context.data.truncated ? (
+              <div className="project-limit-notice" role="status"><ShieldAlert /><span><strong>Some Project records are not shown.</strong> Load the complete lists when you need technical detail.</span><button className="outline-button" disabled={loadFullLists} onClick={() => setLoadFullLists(true)}>{loadFullLists ? "Loading full lists…" : "Load complete lists"}</button></div>
             ) : null}
-          </section>
-        </div>
 
-        <ProjectObservationTable projectId={projectId} />
+            <section className={styles.contentSection}>
+              <header><div><h2>Research contents</h2><p>Studies and versioned resources available to the Agent in this Project.</p></div></header>
+              <div className={styles.contentGrid}>
+                <ContentGroup title="Studies"><StudyList rows={context.data.studies} /></ContentGroup>
+                <ContentGroup title="Resources">
+                  {fullResources.error ? <ProjectApiError error={fullResources.error} compact /> : null}
+                  <ResourceList resources={resources ?? []} />
+                </ContentGroup>
+              </div>
+            </section>
 
-        <section className="project-panel">
-          <SectionHeader title="Entities" description="Subjects, samples, observations, and derived research objects persisted in the Research Graph." />
-          {fullEntities.error ? <ProjectApiError error={fullEntities.error} compact /> : null}
-          {fullEntities.isFetching ? <div className="loading-state">Loading complete entity list…</div> : null}
-          {entities ? (
-            <div className="record-table-wrap project-table-wrap">
-              <table className="simple-table project-table">
-                <thead><tr><th>Entity</th><th>Category</th><th>Kind</th><th>State</th><th>Created</th></tr></thead>
-                <tbody>{entities.map((entity) => <tr key={entity.id}><td><strong>{entity.label}</strong><small className="cell-subline mono">{entity.id}</small></td><td>{entity.category}</td><td>{entity.kind}</td><td><StateBadge state={entity.state} /></td><td>{formatDate(entity.createdAt)}</td></tr>)}</tbody>
-              </table>
-              {entities.length === 0 ? <ProjectEmpty label="The live API returned no project entities." /> : null}
-            </div>
-          ) : null}
-        </section>
-
-        <section className="project-panel">
-          <SectionHeader title="Activities" description="Experimental, import, analysis, and Agent runs with persisted provenance." />
-          {fullActivities.error ? <ProjectApiError error={fullActivities.error} compact /> : null}
-          {fullActivities.isFetching ? <div className="loading-state">Loading complete activity list…</div> : null}
-          {activities ? (
-            <div className="project-timeline">
-              {activities.map((activity) => (
-                <article key={activity.id}>
-                  <span className="timeline-dot"><Activity /></span>
-                  <div><strong>{activity.label}</strong><small>{activity.kind} · {activity.id}</small></div>
-                  <StateBadge state={activity.status} />
-                  <time>{formatDate(activity.startedAt)}</time>
-                </article>
-              ))}
-              {activities.length === 0 ? <ProjectEmpty label="The live API returned no project activities." /> : null}
-            </div>
-          ) : null}
-        </section>
+            <details className={styles.technicalDetails}>
+              <summary><GitBranch />Technical Project details</summary>
+              <div className={styles.technicalBody}>
+                <ContextPackDetails context={context.data} />
+                <ProjectObservationTable projectId={projectId} />
+                <TechnicalRecords entities={entities ?? []} activities={activities ?? []} />
+              </div>
+            </details>
+          </>
+        ) : null}
       </div>
     </AppShell>
   );
 }
 
-function Metric({ icon, label, value, loading }: { icon: React.ReactNode; label: string; value: string; loading: boolean }) {
-  return <article className="project-metric"><span>{icon}</span><div><small>{label}</small><strong>{loading ? "…" : value}</strong></div></article>;
+function Metric({ label, value }: { label: string; value: number | undefined }) {
+  return <div className={styles.metric}><small>{label}</small><strong>{value ?? "…"}</strong></div>;
 }
 
-function ContextPackDetails({ context }: { context: ProjectContextPack }) {
-  return (
-    <div className="context-pack-grid">
-      <div className="context-summary"><GitBranch /><div><strong>Persisted context coverage</strong><p>{context.studies.length} studies, {context.entities.length} entities, {context.activities.length} activities, {context.associations.length} associations, and {context.evidence.length} evidence items.</p></div></div>
-      <div><strong>Execution provenance</strong><ul><li>{context.activityIo.length} activity input/output links</li><li>{context.activityActors.length} actor assignments</li><li>{context.associationEvidence.length} evidence links</li></ul></div>
-      <div><strong>Data products</strong><ul><li>{context.resources.length} resources</li><li>{context.resourceRevisions.length} immutable revisions</li><li>{context.resourceGraphBindings.length} graph bindings</li></ul></div>
-      <dl className="context-provenance"><div><dt>Project</dt><dd>{context.project.id}</dd></div><div><dt>Response</dt><dd>{context.truncated ? "Truncated by server limit" : "Complete within server limit"}</dd></div></dl>
-    </div>
-  );
+function ContentGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return <div className={styles.contentGroup}><h3>{title}</h3>{children}</div>;
+}
+
+function ResourceList({ resources }: { resources: ProjectContextPack["resources"] }) {
+  if (!resources.length) return <ProjectEmpty label="No resources yet. Add files in Project chat." />;
+  return <div className={styles.rowList}>{resources.slice(0, 6).map((resource) => (
+    <Link key={resource.id} href={`/resources/${encodeURIComponent(resource.id)}`}><Boxes /><span><strong>{resource.name}</strong><small>{resource.backend || resource.id}</small></span><ArrowRight /></Link>
+  ))}</div>;
 }
 
 function StudyList({ rows }: { rows: JsonRecord[] }) {
-  if (rows.length === 0) return <ProjectEmpty label="The context pack contains no study records." />;
-  return <div className="project-object-list">{rows.map((study, index) => {
+  if (!rows.length) return <ProjectEmpty label="No study records yet." />;
+  return <div className={styles.rowList}>{rows.slice(0, 6).map((study, index) => {
     const id = text(study.id, `study-${index + 1}`);
-    return <div className="project-object-static" key={id}><span className="project-object-icon"><Beaker /></span><span><strong>{text(study.label ?? study.name, id)}</strong><small>{text(study.description, text(study.kind, "Study"))}</small></span><TinyBadge tone="blue">study</TinyBadge></div>;
+    return <div key={id}><Beaker /><span><strong>{text(study.label ?? study.name, id)}</strong><small>{text(study.description, text(study.kind, "Study"))}</small></span></div>;
   })}</div>;
+}
+
+function ContextPackDetails({ context }: { context: ProjectContextPack }) {
+  return <section className={styles.technicalGroup}><h3>Agent context coverage</h3><div className={styles.technicalFacts}>
+    <div><strong>Research graph</strong><p>{context.associations.length} associations and {context.evidence.length} evidence items.</p></div>
+    <div><strong>Execution provenance</strong><p>{context.activityIo.length} input/output links and {context.activityActors.length} actor assignments.</p></div>
+    <div><strong>Data products</strong><p>{context.resourceRevisions.length} immutable revisions and {context.resourceGraphBindings.length} graph bindings.</p></div>
+  </div></section>;
+}
+
+function TechnicalRecords({ entities, activities }: { entities: ProjectContextPack["entities"]; activities: ProjectContextPack["activities"] }) {
+  return <section className={styles.technicalGroup}><h3>Recent persisted records</h3><div className={styles.contentGrid}>
+    <ContentGroup title="Entities"><div className={styles.rowList}>{entities.slice(0, 8).map((entity) => <div key={entity.id}><Database /><span><strong>{entity.label}</strong><small>{entity.category} · {entity.kind}</small></span><StateBadge state={entity.state} /></div>)}{!entities.length ? <ProjectEmpty label="No entities." /> : null}</div></ContentGroup>
+    <ContentGroup title="Activities"><div className={styles.rowList}>{activities.slice(0, 8).map((activity) => <div key={activity.id}><Activity /><span><strong>{activity.label}</strong><small>{activity.kind} · {formatDate(activity.startedAt)}</small></span><StateBadge state={activity.status} /></div>)}{!activities.length ? <ProjectEmpty label="No activities." /> : null}</div></ContentGroup>
+  </div></section>;
 }
 
 function StateBadge({ state }: { state: string }) {
   const normalized = state.toLowerCase();
-  const tone = normalized === "validated" || normalized === "completed" || normalized === "available"
-    ? "green"
-    : normalized === "hypothesis" || normalized === "proposed"
-      ? "amber"
-      : normalized === "computed"
-        ? "purple"
-        : "blue";
+  const tone = normalized === "validated" || normalized === "completed" || normalized === "available" ? "green" : normalized === "hypothesis" || normalized === "proposed" ? "amber" : normalized === "computed" ? "purple" : "blue";
   return <TinyBadge tone={tone}>{state || "unknown"}</TinyBadge>;
 }
 
 function ProjectEmpty({ label }: { label: string }) {
-  return <div className="project-inline-empty"><ShieldAlert />{label}</div>;
+  return <div className={styles.emptyRow}><FlaskConical />{label}</div>;
 }
 
 function text(value: unknown, fallback = "Not available") {
@@ -179,7 +155,7 @@ function text(value: unknown, fallback = "Not available") {
 }
 
 function formatDate(value: string) {
-  if (!value) return "Not available";
+  if (!value) return "No date";
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
 }

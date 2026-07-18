@@ -93,8 +93,9 @@ pnpm lint
 pnpm build
 ```
 
-See [`deploy/README.md`](deploy/README.md) for the hardened three-repository
-deployment. [`ARCHITECTURE.md`](ARCHITECTURE.md) is the frozen V1 architecture,
+See [`deploy/SIMPLE.md`](deploy/SIMPLE.md) for the default three-image quick
+deployment and [`deploy/README.md`](deploy/README.md) for the retained hardened
+profile. [`ARCHITECTURE.md`](ARCHITECTURE.md) is the frozen V1 architecture,
 security model, and acceptance contract; the OpenAPI document is the HTTP
 contract.
 

@@ -42,9 +42,9 @@ services:
       SHENNONG_CONFIG_DIR: /config
       SHENNONG_DATA_DIR: /data
       SHENNONG_DOCKER_SOCKET: /run/shennong/docker.sock
+      SHENNONG_RUNTIME_DOCKER_MODE: simple
       SHENNONG_RUNTIME_IMAGE: ${SHENNONG_RUNTIME_IMAGE:-zerostwo/shennong-runtime:latest}
     volumes:
       - ${SHENNONG_DATA_DIR:-./shennong-data}/config:/config:ro
       - ${SHENNONG_DATA_DIR:-./shennong-data}/runtime:/data
       - ${SHENNONG_DOCKER_SOCKET:-/var/run/docker.sock}:/run/shennong/docker.sock
-

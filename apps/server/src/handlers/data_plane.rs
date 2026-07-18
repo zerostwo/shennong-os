@@ -644,7 +644,6 @@ pub(crate) async fn execute_public_db_discovery(
     }
     Ok(response.body)
 }
-
 fn agent_resource_query_body(project_id: Uuid, arguments: &Value) -> Result<Value, ApiError> {
     let object = arguments
         .as_object()

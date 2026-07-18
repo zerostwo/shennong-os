@@ -54,6 +54,9 @@ describe("OS authentication contract", () => {
       user_id: "admin-1",
       role: "admin",
       scopes: [],
+      display_name: "Admin",
+      username: undefined,
+      avatar_url: undefined,
     });
   });
 

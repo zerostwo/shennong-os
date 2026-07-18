@@ -46,7 +46,6 @@ function runtimeErrorMessage(reason: unknown, fallback: string) {
   if (reason && typeof reason === "object" && "message" in reason && typeof reason.message === "string" && reason.message !== "[object Object]") return reason.message;
   return fallback;
 }
-
 class ShennongHttpAgent extends HttpAgent {
   override runAgent(...[parameters, subscriber]: Parameters<HttpAgent["runAgent"]>) {
     return super.runAgent({ ...parameters, runId: randomUuid() }, subscriber);

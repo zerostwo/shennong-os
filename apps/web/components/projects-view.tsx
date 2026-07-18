@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowRight, CalendarClock, FolderKanban, Plus, Search, ShieldCheck, Users } from "lucide-react";
+import { ArrowRight, CalendarClock, FolderKanban, Grid2X2, List, Plus, Search } from "lucide-react";
 import {
   createProject,
   listProjects,
@@ -12,12 +12,14 @@ import {
   type ProjectRecord,
 } from "@/lib/api/adapter";
 import { AppShell, EmptyState, SectionHeader, TinyBadge, TopBar } from "./app-shell";
+import styles from "./project-ui.module.css";
 
 const projectKeys = { all: ["projects"] as const };
 
 export function ProjectsView() {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [view, setView] = useState<"list" | "grid">("list");
   const [creating, setCreating] = useState(false);
   const projects = useQuery({ queryKey: projectKeys.all, queryFn: listProjects });
   const createMutation = useMutation({
@@ -34,6 +36,14 @@ export function ProjectsView() {
       `${project.name} ${project.description} ${project.ownerUserId}`.toLowerCase().includes(needle),
     );
   }, [projects.data, query]);
+  useEffect(() => {
+    const saved = window.localStorage.getItem("shennong-project-view");
+    if (saved === "grid" || saved === "list") setView(saved);
+  }, []);
+  function changeView(next: "list" | "grid") {
+    setView(next);
+    window.localStorage.setItem("shennong-project-view", next);
+  }
 
   function submitProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,7 +78,10 @@ export function ProjectsView() {
               placeholder="Search projects…"
             />
           </label>
-          <TinyBadge tone="green">Live API</TinyBadge>
+          <div className={styles.viewToggle} role="group" aria-label="Project view">
+            <button type="button" aria-label="List view" aria-pressed={view === "list"} onClick={() => changeView("list")}><List /></button>
+            <button type="button" aria-label="Grid view" aria-pressed={view === "grid"} onClick={() => changeView("grid")}><Grid2X2 /></button>
+          </div>
         </div>
         {error ? <ProjectApiError error={error} /> : null}
         {projects.isPending ? <div className="loading-state">Loading projects from Shennong OS…</div> : null}
@@ -80,7 +93,7 @@ export function ProjectsView() {
           />
         ) : null}
         {visibleProjects.length > 0 ? (
-          <div className="project-card-grid">
+          <div className={styles.projectCollection} data-view={view}>
             {visibleProjects.map((project) => <ProjectCard key={project.id} project={project} />)}
           </div>
         ) : null}
@@ -108,25 +121,21 @@ export function ProjectsView() {
 
 function ProjectCard({ project }: { project: ProjectRecord }) {
   return (
-    <article className="project-card">
-      <div className="project-card-heading">
-        <span className="project-card-icon"><FolderKanban /></span>
+    <article className={styles.projectItem}>
+      <div className={styles.projectIdentity}>
+        <span><FolderKanban /></span>
         <div>
           <h2>{project.name}</h2>
           <code>{project.id}</code>
         </div>
+      </div>
+      <p className={styles.projectDescription}>{project.description || "No description provided."}</p>
+      <div className={styles.projectMeta} aria-label="Project summary">
         <TinyBadge tone={project.visibility === "private" ? "amber" : "green"}>{project.visibility}</TinyBadge>
-      </div>
-      <p>{project.description || "No description provided."}</p>
-      <div className="project-counts" aria-label="Project object counts">
-        <span><Users />{count(project.counts.entities)} entities</span>
-        <span><ShieldCheck />{count(project.counts.activities)} activities</span>
         <span><FolderKanban />{count(project.counts.resources)} resources</span>
-      </div>
-      <div className="project-card-footer">
         <span><CalendarClock />{formatDate(project.updatedAt || project.createdAt)}</span>
-        <Link href={`/projects/${encodeURIComponent(project.id)}`}>Open workspace<ArrowRight /></Link>
       </div>
+      <Link className={styles.projectAction} href={`/projects/${encodeURIComponent(project.id)}`}>Open project<ArrowRight /></Link>
     </article>
   );
 }

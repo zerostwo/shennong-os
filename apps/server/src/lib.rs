@@ -99,6 +99,10 @@ pub fn router(state: AppState) -> Router {
             get(handlers::authentication::session),
         )
         .route(
+            "/api/v1/auth/profile",
+            axum::routing::patch(handlers::authentication::update_profile),
+        )
+        .route(
             "/api/v1/auth/sessions",
             get(handlers::authentication::list_sessions),
         )
@@ -118,6 +122,16 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/admin/registration-policy",
             patch(handlers::authentication::update_registration_policy),
+        )
+        .route("/api/v1/admin/overview", get(handlers::admin::overview))
+        .route(
+            "/api/v1/admin/model-providers",
+            get(handlers::admin::list_model_providers),
+        )
+        .route("/api/v1/users", get(handlers::admin::list_users))
+        .route(
+            "/api/v1/users/{id}",
+            get(handlers::admin::get_user).put(handlers::admin::update_user),
         )
         .route(
             "/api/v1/projects",
@@ -505,5 +519,34 @@ mod tests {
             .await
             .expect("router response");
         assert_eq!(response.status(), http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn admin_center_endpoints_require_an_admin_session() {
+        for path in [
+            "/api/v1/admin/overview",
+            "/api/v1/admin/model-providers",
+            "/api/v1/users",
+        ] {
+            let config = AppConfig::for_test("postgres://test:test@127.0.0.1/test_router".into());
+            let state = AppState {
+                pool: PgPoolOptions::new()
+                    .connect_lazy(&config.database_url)
+                    .expect("lazy test pool"),
+                config: Arc::new(config),
+                auth_rate: RateLimiter::new(20, Duration::from_secs(60)),
+                mutation_rate: RateLimiter::new(240, Duration::from_secs(60)),
+            };
+            let response = router(state)
+                .oneshot(
+                    Request::builder()
+                        .uri(path)
+                        .body(Body::empty())
+                        .expect("admin center request"),
+                )
+                .await
+                .expect("router response");
+            assert_eq!(response.status(), http::StatusCode::UNAUTHORIZED, "{path}");
+        }
     }
 }

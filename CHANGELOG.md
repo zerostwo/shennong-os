@@ -13,6 +13,10 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
   jobs in the governed Project Runtime.
 - Publish the WebUI, control-plane server, and Agent Runtime images to Docker
   Hub from `main`, version tags, and manual GitHub Actions runs.
+- Publish one `zerostwo/shennong-os` image containing the WebUI, control-plane
+  server, Agent Runtime, gateway, and OS PostgreSQL service.
+- Add a three-container Compose deployment that auto-initializes shared service
+  credentials and needs only the OS, DB, and Runtime images.
 - Add a dedicated `llama-cpp` provider kind for the loopback Bonsai reasoning
   adapter at `host.docker.internal:8081/v1`, including server validation,
   Agent Runtime fetch isolation, OpenAPI, migration, and WebUI settings.
@@ -23,6 +27,13 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
   exposing the internal service credential.
 - Add owner-private personal Agent threads so users can chat without selecting
   a Project, while keeping Project data and tools behind explicit Project RBAC.
+- Add persistent user profiles with unique usernames, display names, and
+  bounded PNG, JPEG, or WebP avatars.
+- Add a production operations center for real control-plane health, users,
+  model providers, resource providers, invitations, registration, and audit
+  data, with unsupported backup operations labeled explicitly.
+- Add a standalone Plugins and Skills workspace backed by the capabilities and
+  versioned Skill APIs currently exposed by Shennong.
 
 ### Changed
 
@@ -34,12 +45,27 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 - Default the unified Compose deployment to public Docker Hub application
   images and built-in data/secret paths, reducing the required `.env` surface
   without weakening the Runtime isolation model.
+- Replace the seven-image unified deployment default with three public images:
+  `zerostwo/shennong-os`, `zerostwo/shennong-db`, and
+  `zerostwo/shennong-runtime`.
 - Unify WebUI shell geometry, page gutters, typography, surface colors, active
   navigation, and primary actions around one restrained scientific teal token
   set while preserving the existing information architecture.
 - Adapt Agent `db.query_resource` calls to the current ShennongDB typed feature
   and bounded options contract, and pin the local model host alias to the fixed
   control-network gateway instead of Docker's machine-wide host gateway.
+- Simplify Projects around a default list view, an Agent-first workspace, and
+  direct chat uploads that register private resources before handing durable
+  `project://` references to the Agent.
+- Move global Docs and search into the sidebar, remove duplicate top-bar
+  controls, reorganize Settings, anchor resource drawers, and replace raw JSON
+  records with recursive structured values across product surfaces.
+
+### Security
+
+- Prevent administrators from disabling or demoting the final active
+  administrator, and revoke a user's active sessions when that account is
+  disabled.
 
 ## [1.0.0] - 2026-07-18
 

@@ -219,6 +219,25 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CurrentSessionEnvelope' }
         default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/profile:
+    patch:
+      tags: [Authentication]
+      operationId: updateOwnProfile
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfileWrite' }
+      responses:
+        '200':
+          description: Profile updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentSessionEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
   /api/v1/auth/sessions:
     get:
       tags: [Authentication]
@@ -300,6 +319,71 @@ paths:
         - $ref: '#/components/parameters/CsrfToken'
       responses:
         '204': { description: Invitation revoked. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/admin/overview:
+    get:
+      tags: [Administration]
+      operationId: getAdministrationOverview
+      responses:
+        '200':
+          description: Real control-plane counts and recent activity timestamp.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/admin/model-providers:
+    get:
+      tags: [Administration]
+      operationId: listAllModelProviders
+      responses:
+        '200':
+          description: Read-only administrator view of model provider metadata. Secrets are never returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/users:
+    get:
+      tags: [Administration]
+      operationId: listUsers
+      responses:
+        '200':
+          description: Users visible to administrators.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/users/{id}:
+    get:
+      tags: [Administration]
+      operationId: getUser
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: User details visible to administrators.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    put:
+      tags: [Administration]
+      operationId: updateUser
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminUserUpdate' }
+      responses:
+        '200':
+          description: User updated. Disabling a user revokes active sessions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
         default: { $ref: '#/components/responses/Error' }
   /api/v1/projects:
     get:
@@ -2001,17 +2085,40 @@ components:
       properties:
         email: { type: string, format: email }
         password: { type: string, format: password }
+    ProfileWrite:
+      type: object
+      required: [display_name, username]
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 128 }
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: '^[a-z0-9][a-z0-9._-]{2,31}$'
+        avatar_url:
+          type: [string, 'null']
+          maxLength: 700000
+          description: HTTPS URL or a PNG, JPEG, or WebP data URL.
+    AdminUserUpdate:
+      type: object
+      properties:
+        display_name: { type: [string, 'null'], minLength: 1, maxLength: 128 }
+        email: { type: [string, 'null'], format: email, maxLength: 320 }
+        role: { type: [string, 'null'], enum: [admin, user, null] }
+        status: { type: [string, 'null'], enum: [active, disabled, null] }
     SessionEnvelope:
       type: object
       required: [data]
       properties:
         data:
           type: object
-          required: [id, email, display_name, role]
+          required: [id, email, display_name, username, role]
           properties:
             id: { type: string, format: uuid }
             email: { type: string, format: email }
             display_name: { type: string }
+            username: { type: string }
+            avatar_url: { type: [string, 'null'] }
             role: { type: string, enum: [admin, user] }
             csrf_token:
               type: string
@@ -2027,11 +2134,13 @@ components:
             authenticated: { type: boolean }
             user:
               type: object
-              required: [id, email, display_name, role]
+              required: [id, email, display_name, username, role]
               properties:
                 id: { type: string, format: uuid }
                 email: { type: string, format: email }
                 display_name: { type: string }
+                username: { type: string }
+                avatar_url: { type: [string, 'null'] }
                 role: { type: string, enum: [admin, user] }
     InviteCreate:
       type: object

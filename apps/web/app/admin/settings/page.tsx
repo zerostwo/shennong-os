@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function AdminSettingsPage() {
-  redirect("/admin/invites");
+  redirect("/admin/security");
 }

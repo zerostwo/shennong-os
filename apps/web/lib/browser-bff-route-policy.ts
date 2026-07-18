@@ -13,12 +13,16 @@ const ROUTES: readonly RoutePolicy[] = [
   { pattern: /^auth\/registration-policy$/, methods: READ },
   { pattern: /^auth\/(?:register|sign-in|sign-out)$/, methods: methods("POST") },
   { pattern: /^auth\/session$/, methods: READ },
+  { pattern: /^auth\/profile$/, methods: methods("PATCH") },
   { pattern: /^auth\/sessions$/, methods: READ },
   { pattern: /^auth\/sessions\/[^/]+$/, methods: methods("DELETE") },
 
   { pattern: /^admin\/invites$/, methods: READ_CREATE },
   { pattern: /^admin\/invites\/[^/]+$/, methods: methods("DELETE") },
   { pattern: /^admin\/registration-policy$/, methods: methods("PATCH") },
+  { pattern: /^admin\/(?:overview|model-providers)$/, methods: READ },
+  { pattern: /^users$/, methods: READ },
+  { pattern: /^users\/[^/]+$/, methods: methods("GET", "HEAD", "PUT") },
 
   { pattern: /^projects$/, methods: READ_CREATE },
   { pattern: /^projects\/[^/]+$/, methods: methods("GET", "HEAD", "PATCH") },

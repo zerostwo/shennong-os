@@ -38,7 +38,7 @@ function ChatControls() {
   );
 }
 
-export function ChatView({ threadId, projectId }: { threadId?: string; projectId?: string }) {
+export function ChatView({ threadId, projectId, initialPrompt }: { threadId?: string; projectId?: string; initialPrompt?: string }) {
   return (
     <ShennongRuntimeProvider initialThreadId={threadId} projectId={projectId}>
       <AppShell active="chat" assistantThreads>
@@ -49,7 +49,7 @@ export function ChatView({ threadId, projectId }: { threadId?: string; projectId
             <button className="chat-settings-button" aria-label="Manage models" onClick={() => window.dispatchEvent(new CustomEvent("shennong:open-settings", { detail: "models" }))}><Settings2 /></button>
             {projectId ? <Link className="chat-project-context" href={`/projects/${encodeURIComponent(projectId)}`}><FolderKanban /><span>Project workspace</span></Link> : null}
           </header>
-          <div className="chat-main"><ShennongThread /></div>
+          <div className="chat-main"><ShennongThread projectId={projectId} initialPrompt={initialPrompt} /></div>
         </div>
       </AppShell>
     </ShennongRuntimeProvider>
