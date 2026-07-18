@@ -60,7 +60,7 @@ export function ProjectGraphView({ projectId }: { projectId: string }) {
       />
       <div className="workspace-page project-graph-page">
         <ProjectTabs projectId={projectId} active="graph" />
-        <SectionHeader title="Focused subgraph" description="Choose one root and 1–3 hops. ShennongDB never sends the entire project graph to the browser." />
+        <SectionHeader title="Focused subgraph" description="Choose one root and 1-3 hops. ShennongDB never sends the entire project graph to the browser." />
         <form className="graph-controls" onSubmit={focus}>
           <label><Search /><input aria-label="Graph root entity ID" value={rootDraft} onChange={(event) => setRootDraft(event.target.value)} placeholder={initialRoot || "No root entity available"} /></label>
           <label>Depth<select aria-label="Graph depth" value={depth} onChange={(event) => setDepth(Number(event.target.value))}><option value={1}>1 hop</option><option value={2}>2 hops</option><option value={3}>3 hops</option></select></label>
@@ -144,6 +144,6 @@ function object(value: unknown): JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
 }
 
-function text(value: unknown, fallback = "—") {
+function text(value: unknown, fallback = "Not available") {
   return typeof value === "string" && value.length > 0 ? value : fallback;
 }

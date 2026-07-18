@@ -45,6 +45,7 @@ const providerDefaults: Record<AiProviderRecord["providerType"], { baseUrl: stri
   openai: { baseUrl: "https://api.openai.com/v1" },
   deepseek: { baseUrl: "https://api.deepseek.com" },
   ollama: { baseUrl: "http://host.docker.internal:11434/v1" },
+  "llama-cpp": { baseUrl: "http://host.docker.internal:8081/v1" },
   "openai-compatible": { baseUrl: "" },
 };
 
@@ -52,6 +53,7 @@ const providerLabels: Record<AiProviderRecord["providerType"], string> = {
   openai: "OpenAI",
   deepseek: "DeepSeek",
   ollama: "Ollama",
+  "llama-cpp": "llama.cpp",
   "openai-compatible": "OpenAI-compatible",
 };
 
@@ -199,7 +201,7 @@ function ProviderForm({ provider, onCancel, onSaved }: { provider: AiProviderRec
     <form className="provider-form" onSubmit={submit}>
       <div className="provider-form-heading"><h3>{provider ? "Edit model connection" : "Add model connection"}</h3><button type="button" className="settings-text-button" onClick={onCancel}>Cancel</button></div>
       <div className="provider-form-grid">
-        <label className="wide">Provider<select value={type} onChange={(event) => changeType(event.target.value as AiProviderRecord["providerType"])} autoFocus disabled={Boolean(provider)}><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="ollama">Ollama</option><option value="openai-compatible">OpenAI-compatible</option></select></label>
+        <label className="wide">Provider<select value={type} onChange={(event) => changeType(event.target.value as AiProviderRecord["providerType"])} autoFocus disabled={Boolean(provider)}><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="ollama">Ollama</option><option value="llama-cpp">llama.cpp</option><option value="openai-compatible">OpenAI-compatible</option></select></label>
         {type !== "ollama" ? <label className="wide">API key<input value={apiKey} onChange={(event) => setApiKey(event.target.value)} type="password" autoComplete="off" placeholder={provider?.hasApiKey ? "Leave blank to use the saved key" : "Paste API key"} /></label> : null}
         {type === "openai-compatible" ? <label className="wide">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://provider.example/v1" required /></label> : null}
         <label className="wide">Model ID<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="e.g. gpt-5-mini" required /></label>

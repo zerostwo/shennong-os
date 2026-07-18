@@ -142,7 +142,7 @@ export function ProjectApiError({ error, compact = false }: { error: unknown; co
 }
 
 function count(value: number | undefined) {
-  return value === undefined ? "—" : String(value);
+  return value === undefined ? "Not available" : String(value);
 }
 
 function formatDate(value: string) {

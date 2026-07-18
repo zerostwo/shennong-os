@@ -286,6 +286,14 @@ pub fn router(state: AppState) -> Router {
             get(handlers::data_plane::resources_root),
         )
         .route(
+            "/api/v1/resource-providers",
+            get(handlers::data_plane::resource_providers),
+        )
+        .route(
+            "/api/v1/resources/install",
+            post(handlers::data_plane::install_resource_provider),
+        )
+        .route(
             "/api/v1/resources/{id}",
             get(handlers::data_plane::resource),
         )
@@ -474,5 +482,28 @@ mod tests {
             .await
             .expect("router response");
         assert_eq!(response.status(), http::StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn resource_provider_management_requires_an_admin_session() {
+        let config = AppConfig::for_test("postgres://test:test@127.0.0.1/test_router".into());
+        let state = AppState {
+            pool: PgPoolOptions::new()
+                .connect_lazy(&config.database_url)
+                .expect("lazy test pool"),
+            config: Arc::new(config),
+            auth_rate: RateLimiter::new(20, Duration::from_secs(60)),
+            mutation_rate: RateLimiter::new(240, Duration::from_secs(60)),
+        };
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/resource-providers")
+                    .body(Body::empty())
+                    .expect("Resource provider request"),
+            )
+            .await
+            .expect("router response");
+        assert_eq!(response.status(), http::StatusCode::UNAUTHORIZED);
     }
 }

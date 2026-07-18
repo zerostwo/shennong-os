@@ -8,7 +8,7 @@ export type JsonRecord = Record<string, unknown>;
 export type AiProviderRecord = {
   id: string;
   name: string;
-  providerType: "openai" | "deepseek" | "ollama" | "openai-compatible";
+  providerType: "openai" | "deepseek" | "ollama" | "llama-cpp" | "openai-compatible";
   baseUrl: string;
   model: string;
   dataPolicy: "public_only" | "allow_private";
@@ -318,7 +318,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return ("data" in payload ? payload.data : payload) as T;
 }
 
-function text(value: unknown, fallback = "—"): string {
+function text(value: unknown, fallback = "Not available"): string {
   return typeof value === "string" && value.length ? value : fallback;
 }
 
@@ -342,7 +342,7 @@ function recordArray(value: unknown): JsonRecord[] {
   return Array.isArray(value) ? value.map(jsonRecord) : [];
 }
 
-function valueText(value: unknown, fallback = "—"): string {
+function valueText(value: unknown, fallback = "Not available"): string {
   return typeof value === "string" && value.length > 0
     ? value
     : typeof value === "number"
@@ -435,7 +435,7 @@ function toProjectActivity(value: JsonRecord): ProjectActivityRecord {
 
 function toAiProvider(value: JsonRecord): AiProviderRecord {
   const providerTypeValue = valueText(value.provider_kind ?? value.provider_type ?? value.kind ?? value.type, "openai-compatible");
-  const providerType = providerTypeValue === "openai" || providerTypeValue === "deepseek" || providerTypeValue === "ollama"
+  const providerType = providerTypeValue === "openai" || providerTypeValue === "deepseek" || providerTypeValue === "ollama" || providerTypeValue === "llama-cpp"
     ? providerTypeValue
     : "openai-compatible";
   return {
@@ -670,7 +670,7 @@ export async function listRelations(resourceId: string): Promise<unknown[]> {
   return request<unknown[]>(`/resources/${encodeURIComponent(resourceId)}/relations`);
 }
 
-export async function listProviders(): Promise<unknown[]> { return request<unknown[]>("/providers"); }
+export async function listProviders(): Promise<unknown[]> { return request<unknown[]>("/resource-providers"); }
 export async function installProvider(name: string): Promise<unknown> { return request("/resources/install", { method: "POST", body: JSON.stringify({ name }) }); }
 export async function listUsers(): Promise<unknown[]> { return request<unknown[]>("/users"); }
 export async function getUser(id: string): Promise<JsonRecord> { return request(`/users/${encodeURIComponent(id)}`); }
@@ -1336,7 +1336,7 @@ export async function submitProjectObservations(projectId: string, rows: Observa
   })));
   const created: Array<{ entity: ProjectEntityRecord; row: ObservationDraft; rowIndex: number }> = [];
   entityResults.forEach((result, index) => {
-    if (result.status === "fulfilled" && result.value.id !== "—") {
+    if (result.status === "fulfilled" && result.value.id !== "Not available") {
       created.push({ entity: result.value, row: rows[index], rowIndex: index });
     } else {
       failures.push({

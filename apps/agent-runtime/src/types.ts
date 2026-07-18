@@ -2,7 +2,7 @@ export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 
-export type ProviderKind = "openai" | "deepseek" | "ollama" | "openai-compatible";
+export type ProviderKind = "openai" | "deepseek" | "ollama" | "llama-cpp" | "openai-compatible";
 
 export interface ProviderConfig {
   kind: ProviderKind;

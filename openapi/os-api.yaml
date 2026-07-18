@@ -530,10 +530,11 @@ paths:
       operationId: listThreads
       parameters:
         - $ref: '#/components/parameters/ProjectIdOptional'
+        - $ref: '#/components/parameters/ThreadScopeOptional'
         - $ref: '#/components/parameters/Limit'
       responses:
         '200':
-          description: Project threads.
+          description: Threads visible to the actor; use scope=personal for non-project chats.
           content:
             application/json:
               schema:
@@ -863,10 +864,11 @@ paths:
       operationId: listRuns
       parameters:
         - $ref: '#/components/parameters/ProjectIdOptional'
+        - $ref: '#/components/parameters/ThreadScopeOptional'
         - $ref: '#/components/parameters/Limit'
       responses:
         '200':
-          description: Project runs.
+          description: Runs visible to the actor; use scope=personal for non-project chats.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ListEnvelope' }
@@ -1242,6 +1244,39 @@ paths:
           content:
             application/json:
               schema: {}
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/resource-providers:
+    get:
+      tags: [Administration]
+      operationId: listResourceProviders
+      description: Lists ShennongDB Resource provider manifests for a Shennong OS administrator without exposing the internal service credential.
+      responses:
+        '200':
+          description: Installable Resource provider manifests.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/resources/install:
+    post:
+      tags: [Administration]
+      operationId: installResourceProvider
+      description: Installs one governed ShennongDB Resource provider. The completed upstream response is returned only after atomic publication.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_-]+$' }
+      responses:
+        '200': { description: Installed and published Resource. }
         default: { $ref: '#/components/responses/Error' }
   /api/v1/resources/{id}:
     get:
@@ -1760,6 +1795,12 @@ components:
       required: false
       description: Omit for actor-private, non-project memory.
       schema: { type: string, format: uuid }
+    ThreadScopeOptional:
+      name: scope
+      in: query
+      required: false
+      description: Use personal to list only actor-owned chats or runs without a Project.
+      schema: { type: string, enum: [personal] }
     Limit:
       name: limit
       in: query
@@ -2020,15 +2061,14 @@ components:
         role: { type: string, enum: [owner, admin, editor, viewer] }
     ThreadCreate:
       type: object
-      required: [project_id]
       properties:
-        project_id: { type: string, format: uuid }
+        project_id: { type: [string, 'null'], format: uuid }
         title: { type: [string, 'null'], maxLength: 500 }
         provider_id: { type: [string, 'null'], format: uuid }
         scope:
           type: [string, 'null']
-          enum: [project, null]
-          description: V1 supports project scope only.
+          enum: [personal, project, null]
+          description: Defaults to project when project_id is present, otherwise personal.
     ThreadUpdate:
       type: object
       properties:
@@ -2040,8 +2080,8 @@ components:
       required: [id, project_id, scope, owner_user_id, title, status, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
-        project_id: { type: string, format: uuid }
-        scope: { type: string, const: project }
+        project_id: { type: [string, 'null'], format: uuid }
+        scope: { type: string, enum: [personal, project] }
         owner_user_id: { type: string, format: uuid }
         provider_id: { type: [string, 'null'], format: uuid }
         title: { type: string }
@@ -2176,7 +2216,9 @@ components:
       required: [name, provider_kind, base_url, model]
       properties:
         name: { type: string }
-        provider_kind: { type: string }
+        provider_kind:
+          type: string
+          enum: [openai, deepseek, ollama, llama-cpp, openai-compatible]
         base_url: { type: string, format: uri }
         model: { type: string }
         data_policy: { type: [string, 'null'] }

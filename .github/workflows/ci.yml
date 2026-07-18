@@ -182,6 +182,7 @@ jobs:
 
       - name: Check production Dockerfiles
         run: |
+          docker buildx build --check --file Dockerfile .
           docker buildx build --check --file apps/server/Dockerfile .
           docker buildx build --check --file apps/web/Dockerfile apps/web
           docker buildx build --check --file apps/agent-runtime/Dockerfile apps/agent-runtime
@@ -189,14 +190,18 @@ jobs:
       - name: Validate unified Compose expansion
         run: docker compose --env-file deploy/.env.example --file deploy/compose.yaml config --quiet
 
-      - name: Test Caddy IDE routing and launch-ticket redaction
-        run: bash deploy/test-caddy-routes.sh
+      - name: Validate embedded Caddy configuration
+        run: >-
+          docker run --rm
+          --volume "$PWD/deploy/container/Caddyfile:/etc/caddy/Caddyfile:ro"
+          caddy:2.11.3-alpine@sha256:86deaf5e3d3408a6ccec08fbb79989783dd26e206ae10bcf78a801dc8c9ab794
+          caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
       - name: Parse deployment recovery scripts
-        run: bash -n deploy/backup-unified.sh deploy/restore-unified.sh deploy/restore-drill.sh deploy/test-caddy-routes.sh
+        run: bash -n deploy/backup-unified.sh deploy/restore-unified.sh deploy/restore-drill.sh deploy/container/entrypoint.sh deploy/container/healthcheck.sh
 
       - name: Lint deployment recovery scripts
-        run: shellcheck deploy/backup-unified.sh deploy/restore-unified.sh deploy/restore-drill.sh deploy/test-caddy-routes.sh
+        run: shellcheck deploy/backup-unified.sh deploy/restore-unified.sh deploy/restore-drill.sh deploy/container/entrypoint.sh deploy/container/healthcheck.sh
 
       - name: Validate host service units
         run: systemd-analyze verify deploy/systemd/shennong-ollama-proxy.socket deploy/systemd/shennong-ollama-proxy.service

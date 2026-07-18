@@ -70,6 +70,8 @@ const ROUTES: readonly RoutePolicy[] = [
   { pattern: /^system\/dependencies$/, methods: READ },
   { pattern: /^audit-events$/, methods: READ },
   { pattern: /^resources$/, methods: READ },
+  { pattern: /^resource-providers$/, methods: READ },
+  { pattern: /^resources\/install$/, methods: methods("POST") },
   { pattern: /^resources\/[^/]+$/, methods: READ },
   { pattern: /^resources\/[^/]+\/(?:artifacts|relations|graph-context)$/, methods: READ },
   { pattern: /^query$/, methods: methods("POST") },

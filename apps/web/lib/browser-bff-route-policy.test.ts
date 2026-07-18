@@ -22,6 +22,8 @@ describe("Shennong OS browser BFF route policy", () => {
     ["PUT", "threads/thread-1/skills/skill-1"],
     ["GET", "threads/thread-1/skills"],
     ["POST", "skills/skill-1/versions"],
+    ["GET", "resource-providers"],
+    ["POST", "resources/install"],
     ["GET", "resources/resource-1/graph-context"],
     ["POST", "query"],
   ])("allows browser route %s /api/v1/%s", (method, path) => {

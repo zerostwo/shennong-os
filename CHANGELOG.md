@@ -8,12 +8,28 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 - Publish the WebUI, control-plane server, and Agent Runtime images to Docker
   Hub from `main`, version tags, and manual GitHub Actions runs.
+- Add a dedicated `llama-cpp` provider kind for the loopback Bonsai reasoning
+  adapter at `host.docker.internal:8081/v1`, including server validation,
+  Agent Runtime fetch isolation, OpenAPI, migration, and WebUI settings.
+- Add a control-bridge-only systemd socket proxy for the loopback llama.cpp
+  reasoning adapter.
+- Add administrator-only Resource provider discovery and installation proxies
+  so the unified WebUI can install governed ShennongDB datasets without
+  exposing the internal service credential.
+- Add owner-private personal Agent threads so users can chat without selecting
+  a Project, while keeping Project data and tools behind explicit Project RBAC.
 
 ### Changed
 
 - Default the unified Compose deployment to public Docker Hub application
   images and built-in data/secret paths, reducing the required `.env` surface
   without weakening the Runtime isolation model.
+- Unify WebUI shell geometry, page gutters, typography, surface colors, active
+  navigation, and primary actions around one restrained scientific teal token
+  set while preserving the existing information architecture.
+- Adapt Agent `db.query_resource` calls to the current ShennongDB typed feature
+  and bounded options contract, and pin the local model host alias to the fixed
+  control-network gateway instead of Docker's machine-wide host gateway.
 
 ## [1.0.0] - 2026-07-18
 

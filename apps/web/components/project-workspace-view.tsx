@@ -59,14 +59,14 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
         {context.isPending ? <div className="loading-state">Loading the project context pack…</div> : null}
         {context.data?.truncated ? <div className="project-limit-notice" role="status"><ShieldAlert /><span><strong>Context pack reached its server limit.</strong> The workspace is showing the bounded pack until you request the complete lists.</span><button className="outline-button" disabled={loadFullLists} onClick={() => setLoadFullLists(true)}>{loadFullLists ? "Loading full lists…" : "Load complete lists"}</button></div> : null}
         <section className="project-overview-grid" aria-label="Project overview">
-          <Metric icon={<FlaskConical />} label="Studies" value={context.data ? String(context.data.studies.length) : "—"} loading={context.isPending} />
-          <Metric icon={<Database />} label="Entities" value={entities ? String(entities.length) : "—"} loading={context.isPending || fullEntities.isFetching} />
-          <Metric icon={<Activity />} label="Activities" value={activities ? String(activities.length) : "—"} loading={context.isPending || fullActivities.isFetching} />
-          <Metric icon={<Boxes />} label="Resources" value={resources ? String(resources.length) : "—"} loading={context.isPending || fullResources.isFetching} />
+          <Metric icon={<FlaskConical />} label="Studies" value={context.data ? String(context.data.studies.length) : "Not available"} loading={context.isPending} />
+          <Metric icon={<Database />} label="Entities" value={entities ? String(entities.length) : "Not available"} loading={context.isPending || fullEntities.isFetching} />
+          <Metric icon={<Activity />} label="Activities" value={activities ? String(activities.length) : "Not available"} loading={context.isPending || fullActivities.isFetching} />
+          <Metric icon={<Boxes />} label="Resources" value={resources ? String(resources.length) : "Not available"} loading={context.isPending || fullResources.isFetching} />
         </section>
 
         <section className="project-panel context-pack-panel">
-          <SectionHeader title="Agent context pack" description="Bounded, permission-filtered context returned by ShennongDB—not an LLM-generated browser summary." />
+          <SectionHeader title="Agent context pack" description="Bounded, permission-filtered context returned by ShennongDB. This is not an LLM-generated browser summary." />
           {context.data ? <ContextPackDetails context={context.data} /> : null}
         </section>
 
@@ -174,12 +174,12 @@ function ProjectEmpty({ label }: { label: string }) {
   return <div className="project-inline-empty"><ShieldAlert />{label}</div>;
 }
 
-function text(value: unknown, fallback = "—") {
+function text(value: unknown, fallback = "Not available") {
   return typeof value === "string" && value.length > 0 ? value : fallback;
 }
 
 function formatDate(value: string) {
-  if (!value) return "—";
+  if (!value) return "Not available";
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }

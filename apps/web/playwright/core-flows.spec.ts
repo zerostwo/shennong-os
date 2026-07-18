@@ -14,9 +14,10 @@ async function signIn(page: Page) {
   await expect(page).toHaveURL(/\/admin\/invites/);
 }
 
-test("the public home enforces a Project boundary and Search opens as a centered dialog", async ({ page }) => {
+test("the home opens a personal chat and Search opens as a centered dialog", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Choose a research project" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What can I help you analyze?" })).toBeVisible();
+  await expect(page.getByPlaceholder("Ask Shennong")).toBeVisible();
   const mobileMenu = page.getByRole("button", { name: "Open navigation" });
   if (await mobileMenu.isVisible()) await mobileMenu.click();
   await page.getByRole("button", { name: "Search" }).click();

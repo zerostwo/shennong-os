@@ -1,280 +1,50 @@
-name: shennong-one
+name: shennong
 
 services:
-  gateway:
-    image: caddy:2.11.3-alpine@sha256:86deaf5e3d3408a6ccec08fbb79989783dd26e206ae10bcf78a801dc8c9ab794
+  shennong-os:
+    image: ${SHENNONG_OS_IMAGE:-zerostwo/shennong-os:latest}
     restart: unless-stopped
     ports:
-      - "${SHENNONG_PUBLIC_BIND:-0.0.0.0}:${SHENNONG_PUBLIC_PORT:-18081}:80"
+      - "127.0.0.1:${SHENNONG_PORT:-18081}:8080"
     environment:
-      SHENNONG_IDE_HOST: ${SHENNONG_IDE_HOST:?set the independent IDE host}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE]
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      web:
-        condition: service_healthy
-      os-server:
-        condition: service_healthy
-    networks:
-      - control
-
-  web:
-    image: ${SHENNONG_OS_WEB_IMAGE:-zerostwo/shennong-os-web:latest}
-    restart: unless-stopped
-    read_only: true
-    init: true
-    cap_drop: [ALL]
-    security_opt:
-      - no-new-privileges:true
-    environment:
-      SHENNONG_API_INTERNAL_URL: http://os-server:8080
-      SHENNONG_AGENT_INTERNAL_URL: http://os-server:8080/api/v1/agent
-      NEXT_PUBLIC_SHENNONG_PUBLIC_URL: ${SHENNONG_PUBLIC_ORIGIN:?set the product origin}
-    tmpfs:
-      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
-      - /app/.next/cache:rw,nosuid,nodev,noexec,size=128m,mode=0755
-    healthcheck:
-      test: [CMD, wget, -qO-, http://127.0.0.1:3000/healthz]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-    depends_on:
-      os-server:
-        condition: service_healthy
-    networks:
-      - control
-
-  os-server:
-    image: ${SHENNONG_OS_SERVER_IMAGE:-zerostwo/shennong-os-server:latest}
-    restart: unless-stopped
-    read_only: true
-    init: true
-    user: "65532:65532"
-    group_add:
-      - "${SHENNONG_SECRETS_GID:-1003}"
-    cap_drop: [ALL]
-    security_opt:
-      - no-new-privileges:true
-    environment:
-      SHENNONG_OS_DATABASE_URL_FILE: /run/secrets/os_database_url
-      SHENNONG_OS_BOOTSTRAP_TOKEN_FILE: /run/secrets/os_bootstrap_token
-      SHENNONG_OS_INVITE_HMAC_KEY_FILE: /run/secrets/os_invite_hmac_key
-      SHENNONG_OS_PROVIDER_ENCRYPTION_KEY_FILE: /run/secrets/os_provider_encryption_key
-      SHENNONG_DB_ADMIN_KEY_FILE: /run/secrets/db_admin_key
-      SHENNONG_RUNTIME_JWT_ED25519_PRIVATE_KEY_FILE: /run/secrets/runtime_jwt_ed25519_private_key
-      SHENNONG_AGENT_RUNTIME_SECRET_FILE: /run/secrets/agent_runtime_secret
-      SHENNONG_OS_SERVICE_TOKEN_FILE: /run/secrets/os_service_token
-      SHENNONG_PUBLIC_ORIGIN: ${SHENNONG_PUBLIC_ORIGIN:?set the product origin}
-      SHENNONG_IDE_PUBLIC_ORIGIN: ${SHENNONG_IDE_PUBLIC_ORIGIN:?set the independent IDE origin}
-      SHENNONG_OS_ALLOWED_ORIGINS: ${SHENNONG_PUBLIC_ORIGIN:?set the product origin}
+      SHENNONG_AUTO_INIT: "true"
+      SHENNONG_CONFIG_DIR: /config
+      SHENNONG_DATA_DIR: /data
+      SHENNONG_PUBLIC_ORIGIN: ${SHENNONG_PUBLIC_ORIGIN:-http://localhost:18081}
+      SHENNONG_IDE_PUBLIC_ORIGIN: ${SHENNONG_IDE_PUBLIC_ORIGIN:-http://ide.localhost:18081}
+      SHENNONG_IDE_HOST: ${SHENNONG_IDE_HOST:-ide.localhost}
       SHENNONG_OS_COOKIE_SECURE: ${SHENNONG_OS_COOKIE_SECURE:-false}
-      SHENNONG_OS_TRUST_PROXY_HEADERS: "true"
-      SHENNONG_OS_RUN_MIGRATIONS: "true"
-      SHENNONG_OS_MAX_UPLOAD_BYTES: ${SHENNONG_MAX_UPLOAD_BYTES:-53687091200}
-      SHENNONG_OS_UPLOAD_TIMEOUT_SECONDS: ${SHENNONG_UPLOAD_TIMEOUT_SECONDS:-14400}
       SHENNONG_DB_URL: http://shennong-db:8000
-      SHENNONG_RUNTIME_URL: http://172.30.0.1:7000
-      SHENNONG_AGENT_RUNTIME_URL: http://agent-runtime:8002/v1/agent
-      RUST_LOG: ${SHENNONG_OS_LOG:-info,tower_http=info}
-    secrets:
-      - os_database_url
-      - os_bootstrap_token
-      - os_invite_hmac_key
-      - os_provider_encryption_key
-      - db_admin_key
-      - runtime_jwt_ed25519_private_key
-      - agent_runtime_secret
-      - os_service_token
-    tmpfs:
-      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
-    healthcheck:
-      test: [CMD, curl, --fail, --silent, --show-error, http://127.0.0.1:8080/healthz]
-      interval: 10s
-      timeout: 5s
-      retries: 18
-    depends_on:
-      os-postgres:
-        condition: service_healthy
-      shennong-db:
-        condition: service_healthy
-      agent-runtime:
-        condition: service_healthy
-      runtime:
-        condition: service_healthy
-    networks:
-      - control
-
-  agent-runtime:
-    image: ${SHENNONG_AGENT_RUNTIME_IMAGE:-zerostwo/shennong-os-agent-runtime:latest}
-    restart: unless-stopped
-    read_only: true
-    init: true
-    group_add:
-      - "${SHENNONG_SECRETS_GID:-1003}"
-    cap_drop: [ALL]
-    security_opt:
-      - no-new-privileges:true
-    environment:
-      SHENNONG_AGENT_RUNTIME_SECRET_FILE: /run/secrets/agent_runtime_secret
-      SHENNONG_OS_SERVICE_TOKEN_FILE: /run/secrets/os_service_token
-      SHENNONG_OS_INTERNAL_URL: http://os-server:8080
+      SHENNONG_RUNTIME_URL: http://shennong-runtime:7000
+    volumes:
+      - ${SHENNONG_DATA_DIR:-./shennong-data}/config:/config
+      - ${SHENNONG_DATA_DIR:-./shennong-data}/os:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    secrets:
-      - agent_runtime_secret
-      - os_service_token
-    tmpfs:
-      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
-    healthcheck:
-      test: [CMD, node, -e, "fetch('http://127.0.0.1:8002/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-    networks:
-      - control
+    depends_on:
+      - shennong-db
+      - shennong-runtime
 
   shennong-db:
     image: ${SHENNONG_DB_IMAGE:-zerostwo/shennong-db:latest}
     restart: unless-stopped
-    init: true
     environment:
-      SHENNONG_DB_PROFILE: headless
-      SHENNONG_ENV: production
-      SHENNONG_ADMIN_API_KEY_FILE: /run/secrets/db_admin_key
-      SHENNONG_TRUST_PROXY_HEADERS: "false"
-      SHENNONG_MAX_UPLOAD_BYTES: ${SHENNONG_MAX_UPLOAD_BYTES:-53687091200}
-      SHENNONG_UPLOAD_TIMEOUT_SECS: ${SHENNONG_UPLOAD_TIMEOUT_SECONDS:-14400}
-    secrets:
-      - db_admin_key
+      SHENNONG_CONFIG_DIR: /config
+      SHENNONG_DATA_DIR: /data
     volumes:
-      - ${SHENNONG_DB_DATA_DIR:-/srv/shennong.one/data/db}:/data
-    security_opt:
-      - no-new-privileges:true
-    healthcheck:
-      test: [CMD, wget, -qO-, http://127.0.0.1:8000/healthz]
-      interval: 10s
-      timeout: 5s
-      retries: 24
-      start_period: 60s
-    networks:
-      - control
+      - ${SHENNONG_DATA_DIR:-./shennong-data}/config:/config:ro
+      - ${SHENNONG_DATA_DIR:-./shennong-data}/db:/data
 
-  os-postgres:
-    image: postgres:17.10-bookworm@sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394
+  shennong-runtime:
+    image: ${SHENNONG_RUNTIME_IMAGE:-zerostwo/shennong-runtime:latest}
     restart: unless-stopped
     environment:
-      POSTGRES_DB: shennong_os
-      POSTGRES_USER: shennong_os
-      POSTGRES_PASSWORD_FILE: /run/secrets/os_postgres_password
-    secrets:
-      - os_postgres_password
+      SHENNONG_CONFIG_DIR: /config
+      SHENNONG_DATA_DIR: /data
+      SHENNONG_DOCKER_SOCKET: /run/shennong/docker.sock
+      SHENNONG_RUNTIME_IMAGE: ${SHENNONG_RUNTIME_IMAGE:-zerostwo/shennong-runtime:latest}
     volumes:
-      - ${SHENNONG_OS_POSTGRES_DIR:-/srv/shennong.one/data/os-postgres}:/var/lib/postgresql/data
-    shm_size: 256m
-    cap_drop: [ALL]
-    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
-    security_opt:
-      - no-new-privileges:true
-    healthcheck:
-      test: [CMD-SHELL, pg_isready -U shennong_os -d shennong_os]
-      interval: 5s
-      timeout: 5s
-      retries: 24
-    networks:
-      - control
+      - ${SHENNONG_DATA_DIR:-./shennong-data}/config:/config:ro
+      - ${SHENNONG_DATA_DIR:-./shennong-data}/runtime:/data
+      - ${SHENNONG_DOCKER_SOCKET:-/var/run/docker.sock}:/run/shennong/docker.sock
 
-  runtime:
-    image: ${SHENNONG_RUNTIME_DAEMON_IMAGE:-zerostwo/shennong-runtime-daemon:latest}
-    restart: unless-stopped
-    read_only: true
-    init: true
-    user: "${SHENNONG_RUNTIME_UID:?set Runtime UID}:${SHENNONG_RUNTIME_GID:?set Runtime GID}"
-    group_add:
-      - "${SHENNONG_SECRETS_GID:-1003}"
-    cap_drop: [ALL]
-    security_opt:
-      - no-new-privileges:true
-    pids_limit: 256
-    mem_limit: 512m
-    cpus: 1.0
-    environment:
-      SHENNONG_RUNTIME_LISTEN: 172.30.0.1:7000
-      SHENNONG_RUNTIME_HEALTH_ADDR: 172.30.0.1:7000
-      SHENNONG_RUNTIME_DATABASE_URL: sqlite:///var/lib/shennong-runtime/runtime.db?mode=rwc
-      SHENNONG_EXECUTOR: docker
-      SHENNONG_ROOTLESS_DOCKER_SOCKET: /run/shennong-rootless/docker.sock
-      SHENNONG_JOB_EGRESS_NETWORK: shennong-job-egress
-      SHENNONG_SESSION_PROXY_NETWORK: shennong-session-proxy
-      SHENNONG_RUNTIME_INSTANCE_ID: ${SHENNONG_RUNTIME_INSTANCE_ID:-runtime-worker-1}
-      SHENNONG_ROOTLESS_UID: ${SHENNONG_RUNTIME_UID:?set Runtime UID}
-      SHENNONG_ROOTLESSKIT_CHILD_PID_FILE: /run/shennong-rootlesskit/child_pid
-      SHENNONG_EGRESS_POLICY_STATE_FILE: /run/shennong-egress/policy-${SHENNONG_RUNTIME_UID:?set Runtime UID}.ready
-      SHENNONG_JOB_BRIDGE: ${SHENNONG_JOB_BRIDGE:-sn-job-egress}
-      SHENNONG_SESSION_BRIDGE: ${SHENNONG_SESSION_BRIDGE:-sn-session}
-      SHENNONG_RUNTIME_PROXY_V4: ${SHENNONG_RUNTIME_PROXY_V4:-10.252.0.1/32}
-      SHENNONG_JWT_ALGORITHM: EdDSA
-      SHENNONG_JWT_PUBLIC_KEY_FILE: /run/secrets/runtime_jwt_ed25519_public_key
-      SHENNONG_JWT_ISSUER: shennong-os
-      SHENNONG_JWT_AUDIENCE: shennong-runtime
-      SHENNONG_JWT_MAX_TTL_SECONDS: "120"
-      SHENNONG_OS_AUTH_COOKIE_NAMES: shennong_os_session,shennong_os_csrf
-      SHENNONG_MAX_CONCURRENT_JOBS: ${SHENNONG_MAX_CONCURRENT_JOBS:-4}
-      SHENNONG_MAX_CONCURRENT_SESSIONS: ${SHENNONG_MAX_CONCURRENT_SESSIONS:-2}
-      SHENNONG_WORKER_PROFILES_JSON: |-
-        {"profiles":[{"name":"cpu-small","image":"${SHENNONG_WORKER_IMAGE:-zerostwo/shennong-runtime-worker:latest}","kind":"batch","max_resources":{"cpus":2.0,"memory_bytes":8589934592,"pids":256,"timeout_seconds":1800,"tmpfs_bytes":1073741824,"max_log_bytes":8388608,"max_artifact_bytes":2147483648,"max_workspace_bytes":21474836480}},{"name":"ide-small","image":"${SHENNONG_IDE_IMAGE:-zerostwo/shennong-runtime-ide:latest}","kind":"ide","max_resources":{"cpus":4.0,"memory_bytes":17179869184,"pids":512,"timeout_seconds":28800,"tmpfs_bytes":2147483648,"max_log_bytes":16777216,"max_artifact_bytes":4294967296,"max_workspace_bytes":53687091200}}]}
-    volumes:
-      - ${SHENNONG_ROOTLESS_DOCKER_SOCKET:?set the rootless socket path}:/run/shennong-rootless/docker.sock
-      - ${SHENNONG_ROOTLESSKIT_STATE_DIR:?set the RootlessKit state directory}:/run/shennong-rootlesskit:ro
-      - ${SHENNONG_EGRESS_POLICY_STATE_DIR:-/run/shennong-runtime-egress}:/run/shennong-egress:ro
-      - ${SHENNONG_RUNTIME_STATE_DIR:-/srv/shennong.one/data/runtime}:/var/lib/shennong-runtime
-    secrets:
-      - runtime_jwt_ed25519_public_key
-    tmpfs:
-      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
-    network_mode: host
-    healthcheck:
-      test: [CMD, /usr/local/bin/shennong-runtime, healthcheck]
-      interval: 10s
-      timeout: 3s
-      retries: 18
-
-networks:
-  control:
-    name: shennong-control
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.30.0.0/24
-          gateway: 172.30.0.1
-
-volumes:
-  caddy-data:
-  caddy-config:
-
-secrets:
-  os_postgres_password:
-    file: ${SHENNONG_SECRETS_DIR:-./secrets}/os-postgres-password
-  os_database_url:
-    file: ${SHENNONG_SECRETS_DIR:-./secrets}/os-database-url
-  os_bootstrap_token:
-    file: ${SHENNONG_SECRETS_DIR:-./secrets}/os-bootstrap-token
-  os_invite_hmac_key:
-    file: ${SHENNONG_SECRETS_DIR:-./secrets}/os-invite-hmac-key
-  os_provider_encryption_key:
-    file: ${SHENNONG_SECRETS_DIR:-./secrets}/os-provider-encryption-key
-  db_admin_key:
-    file: ${SHENNONG_SECRETS_DIR:-./secrets}/db-admin-key
-  runtime_jwt_ed25519_private_key:
-    file: ${SHENNONG_SECRETS_DIR:-./secrets}/runtime-jwt-ed25519-private.pem
-  runtime_jwt_ed25519_public_key:
-    file: ${SHENNONG_SECRETS_DIR:-./secrets}/runtime-jwt-ed25519-public.pem
-  agent_runtime_secret:
-    file: ${SHENNONG_SECRETS_DIR:-./secrets}/agent-runtime-secret
-  os_service_token:
-    file: ${SHENNONG_SECRETS_DIR:-./secrets}/os-service-token

@@ -26,12 +26,13 @@ use uuid::Uuid;
 #[derive(Deserialize)]
 pub struct ScopedQuery {
     project_id: Option<Uuid>,
+    scope: Option<String>,
     limit: Option<i64>,
 }
 
 #[derive(Deserialize)]
 pub struct ThreadCreate {
-    project_id: Uuid,
+    project_id: Option<Uuid>,
     title: Option<String>,
     provider_id: Option<Uuid>,
     scope: Option<String>,
@@ -134,6 +135,20 @@ pub async fn list_threads(
 ) -> Result<Json<Envelope<Vec<Value>>>, ApiError> {
     let actor = authenticate(&state, &headers, false).await?;
     let limit = query.limit.unwrap_or(200).clamp(1, 500);
+    if query
+        .scope
+        .as_deref()
+        .is_some_and(|scope| scope != "personal")
+    {
+        return Err(ApiError::invalid(
+            "thread scope must be personal or project",
+        ));
+    }
+    if query.project_id.is_some() && query.scope.as_deref() == Some("personal") {
+        return Err(ApiError::invalid(
+            "personal thread scope cannot include project_id",
+        ));
+    }
     let rows = if let Some(project_id) = query.project_id {
         require_project_read(&state, &actor, project_id).await?;
         sqlx::query(
@@ -143,15 +158,29 @@ pub async fn list_threads(
         .bind(limit)
         .fetch_all(&state.pool)
         .await
+    } else if query.scope.as_deref() == Some("personal") {
+        sqlx::query(
+            "SELECT * FROM threads WHERE project_id IS NULL AND owner_user_id=$1 \
+             ORDER BY updated_at DESC,id LIMIT $2",
+        )
+        .bind(actor.id)
+        .bind(limit)
+        .fetch_all(&state.pool)
+        .await
     } else if actor.role == "admin" {
-        sqlx::query("SELECT * FROM threads ORDER BY updated_at DESC,id LIMIT $1")
+        sqlx::query(
+            "SELECT * FROM threads WHERE project_id IS NOT NULL OR owner_user_id=$1 \
+             ORDER BY updated_at DESC,id LIMIT $2",
+        )
+            .bind(actor.id)
             .bind(limit)
             .fetch_all(&state.pool)
             .await
     } else {
         sqlx::query(
-            "SELECT t.* FROM threads t JOIN project_members pm ON pm.project_id=t.project_id \
-             WHERE pm.user_id=$1 ORDER BY t.updated_at DESC,t.id LIMIT $2",
+            "SELECT DISTINCT t.* FROM threads t LEFT JOIN project_members pm ON pm.project_id=t.project_id \
+             WHERE (t.project_id IS NULL AND t.owner_user_id=$1) OR pm.user_id=$1 \
+             ORDER BY t.updated_at DESC,t.id LIMIT $2",
         )
         .bind(actor.id)
         .bind(limit)
@@ -170,13 +199,34 @@ pub async fn create_thread(
     Json(value): Json<ThreadCreate>,
 ) -> Result<(StatusCode, Json<Envelope<Value>>), ApiError> {
     let actor = authenticate(&state, &headers, true).await?;
-    require_project_write(&state, &actor, value.project_id).await?;
-    if value
+    let scope = value
         .scope
         .as_deref()
-        .is_some_and(|scope| scope != "project")
-    {
-        return Err(ApiError::invalid("thread scope must be project"));
+        .unwrap_or(if value.project_id.is_some() {
+            "project"
+        } else {
+            "personal"
+        });
+    match (scope, value.project_id) {
+        ("project", Some(project_id)) => {
+            require_project_write(&state, &actor, project_id).await?;
+        }
+        ("personal", None) => {}
+        ("project", None) => {
+            return Err(ApiError::invalid(
+                "project_id is required for project threads",
+            ));
+        }
+        ("personal", Some(_)) => {
+            return Err(ApiError::invalid(
+                "personal threads cannot include project_id",
+            ));
+        }
+        _ => {
+            return Err(ApiError::invalid(
+                "thread scope must be personal or project",
+            ));
+        }
     }
     let title = validate_title(value.title.as_deref().unwrap_or("New chat"))?;
     if let Some(provider_id) = value.provider_id {
@@ -193,7 +243,7 @@ pub async fn create_thread(
     audit(
         &state,
         Some(&actor),
-        Some(value.project_id),
+        value.project_id,
         "thread.create",
         "thread",
         Some(id.to_string()),
@@ -215,7 +265,7 @@ pub async fn get_thread(
 ) -> Result<Json<Envelope<Value>>, ApiError> {
     let actor = authenticate(&state, &headers, false).await?;
     let row = find_thread(&state, id).await?;
-    require_project_read(&state, &actor, row.get("project_id")).await?;
+    authorize_thread(&state, &actor, &row, false).await?;
     Ok(Json(Envelope {
         data: thread_json(row),
     }))
@@ -229,8 +279,7 @@ pub async fn update_thread(
 ) -> Result<Json<Envelope<Value>>, ApiError> {
     let actor = authenticate(&state, &headers, true).await?;
     let current = find_thread(&state, id).await?;
-    let project_id: Uuid = current.get("project_id");
-    require_project_write(&state, &actor, project_id).await?;
+    let project_id = authorize_thread(&state, &actor, &current, true).await?;
     let title = value.title.as_deref().map(validate_title).transpose()?;
     let status = match value.status.as_deref() {
         Some("regular" | "active") => Some("active"),
@@ -250,7 +299,7 @@ pub async fn update_thread(
     audit(
         &state,
         Some(&actor),
-        Some(project_id),
+        project_id,
         "thread.update",
         "thread",
         Some(id.to_string()),
@@ -269,8 +318,7 @@ pub async fn delete_thread(
 ) -> Result<StatusCode, ApiError> {
     let actor = authenticate(&state, &headers, true).await?;
     let current = find_thread(&state, id).await?;
-    let project_id: Uuid = current.get("project_id");
-    require_project_write(&state, &actor, project_id).await?;
+    let project_id = authorize_thread(&state, &actor, &current, true).await?;
     sqlx::query("UPDATE threads SET status='archived',updated_at=NOW() WHERE id=$1")
         .bind(id)
         .execute(&state.pool)
@@ -279,7 +327,7 @@ pub async fn delete_thread(
     audit(
         &state,
         Some(&actor),
-        Some(project_id),
+        project_id,
         "thread.archive",
         "thread",
         Some(id.to_string()),
@@ -296,7 +344,7 @@ pub async fn list_messages(
 ) -> Result<Json<Envelope<Vec<Value>>>, ApiError> {
     let actor = authenticate(&state, &headers, false).await?;
     let thread = find_thread(&state, id).await?;
-    require_project_read(&state, &actor, thread.get("project_id")).await?;
+    authorize_thread(&state, &actor, &thread, false).await?;
     let rows = sqlx::query("SELECT id,thread_id,role,content_json,status,attachments,metadata,created_at FROM messages WHERE thread_id=$1 ORDER BY created_at,id LIMIT 1000")
         .bind(id).fetch_all(&state.pool).await.map_err(ApiError::database)?;
     Ok(Json(Envelope {
@@ -311,11 +359,10 @@ pub async fn get_active_thread_run(
 ) -> Result<Json<Envelope<Value>>, ApiError> {
     let actor = authenticate(&state, &headers, false).await?;
     let thread = find_thread(&state, id).await?;
-    let project_id: Uuid = thread.get("project_id");
-    require_project_read(&state, &actor, project_id).await?;
+    let project_id = authorize_thread(&state, &actor, &thread, false).await?;
     let row = sqlx::query(
-        "SELECT r.* FROM runs r JOIN projects p ON p.id=r.project_id \
-         WHERE r.thread_id=$1 AND r.project_id=$2 AND p.status='active' \
+        "SELECT r.* FROM runs r WHERE r.thread_id=$1 AND r.project_id IS NOT DISTINCT FROM $2 \
+         AND (r.project_id IS NULL OR EXISTS(SELECT 1 FROM projects p WHERE p.id=r.project_id AND p.status='active')) \
          AND r.status IN ('queued','running','waiting_approval') \
          ORDER BY r.created_at DESC,r.id DESC LIMIT 1",
     )
@@ -358,8 +405,7 @@ pub async fn create_message(
     }
     let actor = authenticate(&state, &headers, true).await?;
     let thread = find_thread(&state, id).await?;
-    let project_id: Uuid = thread.get("project_id");
-    require_project_write(&state, &actor, project_id).await?;
+    let project_id = authorize_thread(&state, &actor, &thread, true).await?;
     let key = headers
         .get(HeaderName::from_static("idempotency-key"))
         .and_then(|value| value.to_str().ok())
@@ -405,7 +451,7 @@ pub async fn create_message(
         audit(
             &state,
             Some(&actor),
-            Some(project_id),
+            project_id,
             "message.create",
             "message",
             Some(message_id.to_string()),
@@ -481,7 +527,7 @@ async fn create_internal_user_message(
              VALUES($1,$2,'message.persist_internal','message',$3,$4)",
         )
         .bind(run.get::<Uuid, _>("requested_by_user_id"))
-        .bind(run.get::<Uuid, _>("project_id"))
+        .bind(run.get::<Option<Uuid>, _>("project_id"))
         .bind(message_id.to_string())
         .bind(json!({"run_id":run_id,"thread_id":thread_id}))
         .execute(&state.pool)
@@ -508,8 +554,7 @@ pub async fn create_run(
 ) -> Result<(StatusCode, Json<Envelope<Value>>), ApiError> {
     let actor = authenticate(&state, &headers, true).await?;
     let thread = find_thread(&state, thread_id).await?;
-    let project_id: Uuid = thread.get("project_id");
-    require_project_write(&state, &actor, project_id).await?;
+    let project_id = authorize_thread(&state, &actor, &thread, true).await?;
     if !value.input.is_object() {
         return Err(ApiError::invalid("run input must be an object"));
     }
@@ -519,7 +564,7 @@ pub async fn create_run(
     audit(
         &state,
         Some(&actor),
-        Some(project_id),
+        project_id,
         "run.create",
         "run",
         Some(id.to_string()),
@@ -541,6 +586,18 @@ pub async fn list_runs(
 ) -> Result<Json<Envelope<Vec<Value>>>, ApiError> {
     let actor = authenticate(&state, &headers, false).await?;
     let limit = query.limit.unwrap_or(200).clamp(1, 500);
+    if query
+        .scope
+        .as_deref()
+        .is_some_and(|scope| scope != "personal")
+    {
+        return Err(ApiError::invalid("run scope must be personal or project"));
+    }
+    if query.project_id.is_some() && query.scope.as_deref() == Some("personal") {
+        return Err(ApiError::invalid(
+            "personal run scope cannot include project_id",
+        ));
+    }
     let rows = if let Some(project_id) = query.project_id {
         require_project_read(&state, &actor, project_id).await?;
         sqlx::query("SELECT * FROM runs WHERE project_id=$1 ORDER BY created_at DESC LIMIT $2")
@@ -548,15 +605,29 @@ pub async fn list_runs(
             .bind(limit)
             .fetch_all(&state.pool)
             .await
+    } else if query.scope.as_deref() == Some("personal") {
+        sqlx::query(
+            "SELECT * FROM runs WHERE project_id IS NULL AND requested_by_user_id=$1 \
+             ORDER BY created_at DESC LIMIT $2",
+        )
+        .bind(actor.id)
+        .bind(limit)
+        .fetch_all(&state.pool)
+        .await
     } else if actor.role == "admin" {
-        sqlx::query("SELECT * FROM runs ORDER BY created_at DESC LIMIT $1")
+        sqlx::query(
+            "SELECT * FROM runs WHERE project_id IS NOT NULL OR requested_by_user_id=$1 \
+             ORDER BY created_at DESC LIMIT $2",
+        )
+            .bind(actor.id)
             .bind(limit)
             .fetch_all(&state.pool)
             .await
     } else {
         sqlx::query(
-            "SELECT r.* FROM runs r JOIN project_members pm ON pm.project_id=r.project_id \
-             WHERE pm.user_id=$1 ORDER BY r.created_at DESC LIMIT $2",
+            "SELECT DISTINCT r.* FROM runs r LEFT JOIN project_members pm ON pm.project_id=r.project_id \
+             WHERE (r.project_id IS NULL AND r.requested_by_user_id=$1) OR pm.user_id=$1 \
+             ORDER BY r.created_at DESC LIMIT $2",
         )
         .bind(actor.id)
         .bind(limit)
@@ -576,7 +647,7 @@ pub async fn get_run(
 ) -> Result<Json<Envelope<Value>>, ApiError> {
     let actor = authenticate(&state, &headers, false).await?;
     let row = find_run(&state, id).await?;
-    require_project_read(&state, &actor, row.get("project_id")).await?;
+    authorize_run(&state, &actor, &row, false).await?;
     Ok(Json(Envelope {
         data: run_json(row),
     }))
@@ -590,8 +661,7 @@ pub async fn update_run(
 ) -> Result<Json<Envelope<Value>>, ApiError> {
     let actor = authenticate(&state, &headers, true).await?;
     let current = find_run(&state, id).await?;
-    let project_id: Uuid = current.get("project_id");
-    require_project_write(&state, &actor, project_id).await?;
+    let project_id = authorize_run(&state, &actor, &current, true).await?;
     if !matches!(
         value.status.as_str(),
         "queued" | "running" | "waiting_approval" | "succeeded" | "failed" | "cancelled"
@@ -605,7 +675,7 @@ pub async fn update_run(
     audit(
         &state,
         Some(&actor),
-        Some(project_id),
+        project_id,
         "run.update",
         "run",
         Some(id.to_string()),
@@ -845,16 +915,16 @@ async fn authorize_run_read(
     actor: &crate::auth::AuthUser,
     run_id: Uuid,
 ) -> Result<(), ApiError> {
-    let project_id: Uuid = sqlx::query_scalar(
-        "SELECT r.project_id FROM runs r JOIN projects p ON p.id=r.project_id \
-         WHERE r.id=$1 AND p.status='active'",
+    let row = sqlx::query(
+        "SELECT r.* FROM runs r WHERE r.id=$1 AND (r.project_id IS NULL OR EXISTS( \
+         SELECT 1 FROM projects p WHERE p.id=r.project_id AND p.status='active'))",
     )
     .bind(run_id)
     .fetch_optional(&state.pool)
     .await
     .map_err(ApiError::database)?
     .ok_or_else(ApiError::not_found)?;
-    require_project_read(state, actor, project_id).await?;
+    authorize_run(state, actor, &row, false).await?;
     Ok(())
 }
 
@@ -867,11 +937,12 @@ async fn replay_authorized(
     sqlx::query_scalar(
         "SELECT EXISTS( \
            SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id \
-           JOIN runs r ON r.id=$1 JOIN projects p ON p.id=r.project_id \
+           JOIN runs r ON r.id=$1 LEFT JOIN projects p ON p.id=r.project_id \
            LEFT JOIN project_members pm ON pm.project_id=p.id AND pm.user_id=u.id \
            WHERE s.id=$2 AND u.id=$3 AND s.revoked_at IS NULL AND s.expires_at>NOW() \
-             AND u.status='active' AND p.status='active' \
-             AND (u.role='admin' OR pm.user_id=u.id) \
+             AND u.status='active' AND (r.project_id IS NULL OR p.status='active') \
+             AND ((r.project_id IS NULL AND r.requested_by_user_id=u.id) \
+                  OR (r.project_id IS NOT NULL AND (u.role='admin' OR pm.user_id=u.id))) \
          )",
     )
     .bind(run_id)
@@ -1148,6 +1219,24 @@ async fn find_thread(state: &AppState, id: Uuid) -> Result<sqlx::postgres::PgRow
         .map_err(ApiError::database)?
         .ok_or_else(ApiError::not_found)
 }
+async fn authorize_thread(
+    state: &AppState,
+    actor: &crate::auth::AuthUser,
+    row: &sqlx::postgres::PgRow,
+    write: bool,
+) -> Result<Option<Uuid>, ApiError> {
+    let project_id: Option<Uuid> = row.get("project_id");
+    if let Some(project_id) = project_id {
+        if write {
+            require_project_write(state, actor, project_id).await?;
+        } else {
+            require_project_read(state, actor, project_id).await?;
+        }
+    } else if row.get::<Uuid, _>("owner_user_id") != actor.id {
+        return Err(ApiError::not_found());
+    }
+    Ok(project_id)
+}
 async fn find_run(state: &AppState, id: Uuid) -> Result<sqlx::postgres::PgRow, ApiError> {
     sqlx::query("SELECT * FROM runs WHERE id=$1")
         .bind(id)
@@ -1155,6 +1244,24 @@ async fn find_run(state: &AppState, id: Uuid) -> Result<sqlx::postgres::PgRow, A
         .await
         .map_err(ApiError::database)?
         .ok_or_else(ApiError::not_found)
+}
+async fn authorize_run(
+    state: &AppState,
+    actor: &crate::auth::AuthUser,
+    row: &sqlx::postgres::PgRow,
+    write: bool,
+) -> Result<Option<Uuid>, ApiError> {
+    let project_id: Option<Uuid> = row.get("project_id");
+    if let Some(project_id) = project_id {
+        if write {
+            require_project_write(state, actor, project_id).await?;
+        } else {
+            require_project_read(state, actor, project_id).await?;
+        }
+    } else if row.get::<Uuid, _>("requested_by_user_id") != actor.id {
+        return Err(ApiError::not_found());
+    }
+    Ok(project_id)
 }
 async fn find_job(state: &AppState, id: Uuid) -> Result<sqlx::postgres::PgRow, ApiError> {
     sqlx::query("SELECT * FROM jobs WHERE id=$1")
@@ -1174,13 +1281,14 @@ fn validate_title(value: &str) -> Result<String, ApiError> {
 }
 
 fn thread_json(row: sqlx::postgres::PgRow) -> Value {
-    json!({"id":row.get::<Uuid,_>("id"),"project_id":row.get::<Uuid,_>("project_id"),"scope":"project","owner_user_id":row.get::<Uuid,_>("owner_user_id"),"provider_id":row.get::<Option<Uuid>,_>("provider_id"),"title":row.get::<String,_>("title"),"status":row.get::<String,_>("status"),"created_at":row.get::<chrono::DateTime<chrono::Utc>,_>("created_at"),"updated_at":row.get::<chrono::DateTime<chrono::Utc>,_>("updated_at")})
+    let project_id = row.get::<Option<Uuid>, _>("project_id");
+    json!({"id":row.get::<Uuid,_>("id"),"project_id":project_id,"scope":if project_id.is_some() {"project"} else {"personal"},"owner_user_id":row.get::<Uuid,_>("owner_user_id"),"provider_id":row.get::<Option<Uuid>,_>("provider_id"),"title":row.get::<String,_>("title"),"status":row.get::<String,_>("status"),"created_at":row.get::<chrono::DateTime<chrono::Utc>,_>("created_at"),"updated_at":row.get::<chrono::DateTime<chrono::Utc>,_>("updated_at")})
 }
 fn message_json(row: sqlx::postgres::PgRow) -> Value {
     json!({"id":row.get::<Uuid,_>("id"),"thread_id":row.get::<Uuid,_>("thread_id"),"role":row.get::<String,_>("role"),"content_json":row.get::<Value,_>("content_json"),"status":row.get::<String,_>("status"),"attachments":row.get::<Value,_>("attachments"),"metadata":row.get::<Value,_>("metadata"),"created_at":row.get::<chrono::DateTime<chrono::Utc>,_>("created_at")})
 }
 fn run_json(row: sqlx::postgres::PgRow) -> Value {
-    json!({"id":row.get::<Uuid,_>("id"),"project_id":row.get::<Uuid,_>("project_id"),"thread_id":row.get::<Uuid,_>("thread_id"),"requested_by_user_id":row.get::<Uuid,_>("requested_by_user_id"),"status":row.get::<String,_>("status"),"input":row.get::<Value,_>("input"),"output":row.get::<Value,_>("output"),"error":row.get::<Value,_>("error"),"started_at":row.get::<Option<chrono::DateTime<chrono::Utc>>,_>("started_at"),"finished_at":row.get::<Option<chrono::DateTime<chrono::Utc>>,_>("finished_at"),"created_at":row.get::<chrono::DateTime<chrono::Utc>,_>("created_at"),"updated_at":row.get::<chrono::DateTime<chrono::Utc>,_>("updated_at")})
+    json!({"id":row.get::<Uuid,_>("id"),"project_id":row.get::<Option<Uuid>,_>("project_id"),"thread_id":row.get::<Uuid,_>("thread_id"),"requested_by_user_id":row.get::<Uuid,_>("requested_by_user_id"),"status":row.get::<String,_>("status"),"input":row.get::<Value,_>("input"),"output":row.get::<Value,_>("output"),"error":row.get::<Value,_>("error"),"started_at":row.get::<Option<chrono::DateTime<chrono::Utc>>,_>("started_at"),"finished_at":row.get::<Option<chrono::DateTime<chrono::Utc>>,_>("finished_at"),"created_at":row.get::<chrono::DateTime<chrono::Utc>,_>("created_at"),"updated_at":row.get::<chrono::DateTime<chrono::Utc>,_>("updated_at")})
 }
 fn job_json(row: sqlx::postgres::PgRow) -> Value {
     json!({"id":row.get::<Uuid,_>("id"),"project_id":row.get::<Uuid,_>("project_id"),"run_id":row.get::<Option<Uuid>,_>("run_id"),"kind":row.get::<String,_>("kind"),"status":row.get::<String,_>("status"),"spec":row.get::<Value,_>("spec"),"result":row.get::<Value,_>("result"),"created_by_user_id":row.get::<Uuid,_>("created_by_user_id"),"created_at":row.get::<chrono::DateTime<chrono::Utc>,_>("created_at"),"updated_at":row.get::<chrono::DateTime<chrono::Utc>,_>("updated_at")})

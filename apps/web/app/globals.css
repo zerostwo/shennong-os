@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&family=JetBrains+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 
 @theme inline {
@@ -24,18 +23,18 @@
 :root {
   --background: #fff;
   --surface: #fff;
-  --surface-subtle: #f8fafc;
-  --surface-muted: #f3f5f7;
-  --surface-selected: #edf5ff;
+  --surface-subtle: #f7f9f8;
+  --surface-muted: #eef2f1;
+  --surface-selected: #e7f5f2;
   --text: #0f172a;
-  --muted: #64748b;
-  --faint: #94a3b8;
-  --border: #e2e8f0;
-  --border-strong: #cbd5e1;
-  --brand: #16a34a;
-  --brand-soft: #eafaf0;
-  --action: #2563eb;
-  --action-soft: #eff6ff;
+  --muted: #5f6f6b;
+  --faint: #8a9995;
+  --border: #dfe6e3;
+  --border-strong: #c9d4d0;
+  --brand: #0f766e;
+  --brand-soft: #e7f6f3;
+  --action: #0f766e;
+  --action-soft: #edf8f6;
   --warning: #d97706;
   --warning-soft: #fff7e6;
   --danger: #dc2626;
@@ -46,8 +45,12 @@
   --admin-sidebar: #08131f;
   --admin-sidebar-surface: #152232;
   --admin-sidebar-muted: #8391a2;
-  --radius: 8px;
-  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --radius: 10px;
+  --mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+  --shell-sidebar-width: 256px;
+  --shell-sidebar-collapsed-width: 72px;
+  --page-gutter: clamp(16px, 2.4vw, 32px);
+  --content-max: 1440px;
 }
 * {
   box-sizing: border-box;
@@ -59,12 +62,12 @@ body {
   overflow-x: hidden;
   background: var(--background);
   color: var(--text);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
 }
 .app-boot-skeleton {
   display: grid;
-  min-height: 100vh;
+  min-height: 100dvh;
   place-items: center;
   background: var(--surface-subtle);
   color: var(--muted);
@@ -93,7 +96,7 @@ code {
 }
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--background);
 }
 .sidebar {
@@ -360,12 +363,12 @@ code {
   padding-top: 11px !important;
 }
 .topbar {
-  min-height: 72px;
+  min-height: 64px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 12px 24px;
+  padding: 10px var(--page-gutter);
   background: #fff;
 }
 .global-search {
@@ -463,8 +466,9 @@ kbd {
 .catalog-page,
 .console-page,
 .admin-page {
-  padding: 28px 24px 36px;
-  max-width: 1500px;
+  width: min(100%, var(--content-max));
+  padding: 32px var(--page-gutter) 48px;
+  max-width: none;
   margin: 0 auto;
 }
 .outline-button,
@@ -488,7 +492,7 @@ kbd {
 }
 .outline-button.selected {
   background: var(--action-soft);
-  border-color: #b9d4ff;
+  border-color: #a8d8d1;
   color: var(--action);
 }
 .outline-button svg,
@@ -502,7 +506,7 @@ kbd {
   color: #fff;
 }
 .primary-button:hover {
-  background: #1d4ed8;
+  background: #0b5f59;
 }
 .catalog-tabs {
   display: flex;
@@ -1752,7 +1756,7 @@ input[type="checkbox"] {
   color: var(--text);
 }
 .console-page {
-  max-width: 1360px;
+  max-width: none;
 }
 .api-base {
   display: flex;
@@ -1968,9 +1972,10 @@ input[type="checkbox"] {
   gap: 8px;
 }
 .workspace-page {
-  max-width: 1360px;
+  width: min(100%, var(--content-max));
+  max-width: none;
   margin: 0 auto;
-  padding: 28px 24px 36px;
+  padding: 32px var(--page-gutter) 48px;
 }
 .workspace-toolbar {
   display: flex;
@@ -1987,9 +1992,10 @@ input[type="checkbox"] {
   margin-top: 18px;
 }
 .upload-page {
-  max-width: 980px;
+  width: min(100%, 1040px);
+  max-width: none;
   margin: 0 auto;
-  padding: 28px 24px 36px;
+  padding: 32px var(--page-gutter) 48px;
 }
 .upload-stepper {
   display: grid;
@@ -2520,12 +2526,12 @@ input[type="checkbox"] {
 
 /* Focused Agent workspace */
 :root {
-  --agent-sidebar: #f7f7f7;
-  --agent-hover: #ececec;
-  --agent-selected: #e9e9e9;
-  --agent-border: #e5e5e5;
-  --agent-text: #161616;
-  --agent-muted: #6b6b6b;
+  --agent-sidebar: var(--surface-subtle);
+  --agent-hover: var(--surface-muted);
+  --agent-selected: var(--surface-selected);
+  --agent-border: var(--border);
+  --agent-text: var(--text);
+  --agent-muted: var(--muted);
 }
 
 .shennong-shell {
@@ -2534,14 +2540,14 @@ input[type="checkbox"] {
   color: var(--agent-text);
 }
 .shennong-sidebar {
-  width: 260px;
+  width: var(--shell-sidebar-width);
   padding: 10px 10px 12px;
   border-right: 1px solid var(--agent-border);
   background: var(--agent-sidebar);
 }
 .shennong-shell .main-column {
-  width: calc(100% - 260px);
-  margin-left: 260px;
+  width: calc(100% - var(--shell-sidebar-width));
+  margin-left: var(--shell-sidebar-width);
   background: #fff;
 }
 .shennong-shell .sidebar-topbar {
@@ -2561,9 +2567,10 @@ input[type="checkbox"] {
   width: 28px;
   height: 28px;
   place-items: center;
-  border: 1px solid #cfcfcf;
+  border: 1px solid #b7d8d2;
   border-radius: 7px;
   background: #fff;
+  color: var(--action);
 }
 .brand-symbol svg {
   width: 17px;
@@ -2606,10 +2613,14 @@ input[type="checkbox"] {
   stroke-width: 1.7;
 }
 .shennong-shell .nav-item:hover,
-.shennong-shell .sidebar-command:hover,
-.shennong-shell .nav-item.active {
+.shennong-shell .sidebar-command:hover {
   background: var(--agent-hover);
   color: #111;
+}
+.shennong-shell .nav-item.active {
+  background: var(--agent-selected);
+  color: var(--action);
+  font-weight: 600;
 }
 .shennong-shell .sidebar-command kbd {
   margin-left: auto;
@@ -2663,7 +2674,7 @@ input[type="checkbox"] {
   font-weight: 600;
 }
 .sidebar-auth-primary {
-  background: #161616;
+  background: var(--action);
   color: #fff;
 }
 .sidebar-auth-secondary {
@@ -2715,12 +2726,12 @@ input[type="checkbox"] {
   background: #f1f1f1;
 }
 .shennong-shell.sidebar-collapsed .shennong-sidebar {
-  width: 68px;
+  width: var(--shell-sidebar-collapsed-width);
   padding-inline: 10px;
 }
 .shennong-shell.sidebar-collapsed .main-column {
-  width: calc(100% - 68px);
-  margin-left: 68px;
+  width: calc(100% - var(--shell-sidebar-collapsed-width));
+  margin-left: var(--shell-sidebar-collapsed-width);
 }
 .shennong-shell.sidebar-collapsed .brand > span:last-child,
 .shennong-shell.sidebar-collapsed .nav-item span,
@@ -2761,8 +2772,8 @@ input[type="checkbox"] {
   color: #292929;
 }
 .admin-shell .nav-item.active {
-  background: #dedede;
-  color: #111;
+  background: var(--agent-selected);
+  color: var(--action);
 }
 .admin-shell .admin-footer {
   border-top-color: #ddd;

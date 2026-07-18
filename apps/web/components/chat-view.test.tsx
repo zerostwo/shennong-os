@@ -16,16 +16,15 @@ vi.mock("@/components/assistant-ui/runtime-provider", () => ({
 }));
 vi.mock("@/components/assistant-ui/thread", () => ({ ShennongThread: () => <div>Assistant thread</div>, ThreadSkillSelector: () => <button>Skills</button> }));
 
-describe("ChatView project boundary", () => {
+describe("ChatView conversation scope", () => {
   beforeEach(() => mocks.runtimeProvider.mockClear());
 
-  it("shows a Project CTA without mounting an Agent runtime", () => {
+  it("mounts a personal Agent runtime without requiring a Project", () => {
     render(<ChatView />);
 
-    expect(screen.getByRole("heading", { name: "Choose a research project" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open projects" })).toHaveAttribute("href", "/projects");
-    expect(screen.queryByTestId("runtime-provider")).not.toBeInTheDocument();
-    expect(mocks.runtimeProvider).not.toHaveBeenCalled();
+    expect(screen.getByTestId("runtime-provider")).toBeInTheDocument();
+    expect(screen.getByText("Assistant thread")).toBeInTheDocument();
+    expect(mocks.runtimeProvider).toHaveBeenCalledWith(expect.objectContaining({ projectId: undefined }));
   });
 
   it("mounts the Agent runtime with the explicit Project", () => {

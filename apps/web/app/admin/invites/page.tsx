@@ -57,7 +57,7 @@ export default function InvitationsPage() {
           <button className="primary-button" disabled={busy}>{busy ? "Creating…" : "Create invitation"}</button>
         </form></section>
         <section className="panel"><h2>Issued invitations</h2><div className="table-wrap"><table><thead><tr><th>Prefix</th><th>Email</th><th>Uses</th><th>Expires</th><th>Status</th><th /></tr></thead><tbody>
-          {invites.map((invite) => <tr key={invite.id}><td><code>{invite.codePrefix}…</code></td><td>{invite.emailConstraint ?? "Any invited user"}</td><td>{invite.useCount} / {invite.maxUses}</td><td>{invite.expiresAt ? new Date(invite.expiresAt).toLocaleString() : "—"}</td><td>{invite.revokedAt ? "Revoked" : new Date(invite.expiresAt).getTime() < Date.now() ? "Expired" : "Active"}</td><td>{!invite.revokedAt ? <button className="icon-button" aria-label="Revoke invitation" onClick={() => void revokeRegistrationInvite(invite.id).then(load)}><Trash2 /></button> : null}</td></tr>)}
+          {invites.map((invite) => <tr key={invite.id}><td><code>{invite.codePrefix}…</code></td><td>{invite.emailConstraint ?? "Any invited user"}</td><td>{invite.useCount} / {invite.maxUses}</td><td>{invite.expiresAt ? new Date(invite.expiresAt).toLocaleString() : "Not available"}</td><td>{invite.revokedAt ? "Revoked" : new Date(invite.expiresAt).getTime() < Date.now() ? "Expired" : "Active"}</td><td>{!invite.revokedAt ? <button className="icon-button" aria-label="Revoke invitation" onClick={() => void revokeRegistrationInvite(invite.id).then(load)}><Trash2 /></button> : null}</td></tr>)}
           {!invites.length ? <tr><td colSpan={6}>No invitations have been issued.</td></tr> : null}
         </tbody></table></div></section>
       </div>
