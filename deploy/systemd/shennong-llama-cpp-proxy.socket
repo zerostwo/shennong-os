@@ -1,0 +1,12 @@
+[Unit]
+Description=Shennong OS private control-network socket for local llama.cpp
+After=docker.service
+
+[Socket]
+ListenStream=172.30.0.1:8081
+FreeBind=true
+NoDelay=true
+MaxConnections=32
+
+[Install]
+WantedBy=sockets.target

@@ -1,2 +1,2 @@
-import { redirect } from "next/navigation";
-export default function MonitoringPage() { redirect("/admin/invites"); }
+import { AdminSectionView } from "@/components/admin-section-view";
+export default function MonitoringPage() { return <AdminSectionView section="monitoring" />; }

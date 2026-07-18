@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Check, Copy, TicketCheck, Trash2 } from "lucide-react";
-import { AppShell } from "@/components/app-shell";
+import { AppShell, TopBar } from "@/components/app-shell";
 import {
   createRegistrationInvite,
   listRegistrationInvites,
@@ -45,8 +45,8 @@ export default function InvitationsPage() {
 
   return (
     <AppShell active="admin" variant="admin">
+      <TopBar title="Invitations" description="Issue and revoke controlled registration codes." search={false} />
       <div className="admin-page">
-        <header className="page-header"><div><h1>Invitations</h1><p>Issue, audit, and revoke early-access registration codes.</p></div></header>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         {plaintextCode ? <section className="invite-once"><TicketCheck /><div><strong>Copy this code now</strong><p>Only its cryptographic digest is stored. It will not be shown again.</p><code>{plaintextCode}</code></div><button onClick={() => void navigator.clipboard.writeText(plaintextCode).then(() => setCopied(true))}>{copied ? <Check /> : <Copy />}{copied ? "Copied" : "Copy"}</button></section> : null}
         <section className="panel"><h2>Create invitation</h2><form className="invite-form" onSubmit={(event) => void create(event)}>
@@ -57,7 +57,7 @@ export default function InvitationsPage() {
           <button className="primary-button" disabled={busy}>{busy ? "Creating…" : "Create invitation"}</button>
         </form></section>
         <section className="panel"><h2>Issued invitations</h2><div className="table-wrap"><table><thead><tr><th>Prefix</th><th>Email</th><th>Uses</th><th>Expires</th><th>Status</th><th /></tr></thead><tbody>
-          {invites.map((invite) => <tr key={invite.id}><td><code>{invite.codePrefix}…</code></td><td>{invite.emailConstraint ?? "Any invited user"}</td><td>{invite.useCount} / {invite.maxUses}</td><td>{invite.expiresAt ? new Date(invite.expiresAt).toLocaleString() : "—"}</td><td>{invite.revokedAt ? "Revoked" : new Date(invite.expiresAt).getTime() < Date.now() ? "Expired" : "Active"}</td><td>{!invite.revokedAt ? <button className="icon-button" aria-label="Revoke invitation" onClick={() => void revokeRegistrationInvite(invite.id).then(load)}><Trash2 /></button> : null}</td></tr>)}
+          {invites.map((invite) => <tr key={invite.id}><td><code>{invite.codePrefix}…</code></td><td>{invite.emailConstraint ?? "Any invited user"}</td><td>{invite.useCount} / {invite.maxUses}</td><td>{invite.expiresAt ? new Date(invite.expiresAt).toLocaleString() : "Not available"}</td><td>{invite.revokedAt ? "Revoked" : new Date(invite.expiresAt).getTime() < Date.now() ? "Expired" : "Active"}</td><td>{!invite.revokedAt ? <button className="icon-button" aria-label="Revoke invitation" onClick={() => void revokeRegistrationInvite(invite.id).then(load)}><Trash2 /></button> : null}</td></tr>)}
           {!invites.length ? <tr><td colSpan={6}>No invitations have been issued.</td></tr> : null}
         </tbody></table></div></section>
       </div>

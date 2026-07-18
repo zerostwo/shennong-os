@@ -59,6 +59,6 @@ function Sessions() {
   );
 }
 
-function text(value: unknown, fallback = "—") {
+function text(value: unknown, fallback = "Not available") {
   return value === null || value === undefined || value === "" ? fallback : String(value);
 }

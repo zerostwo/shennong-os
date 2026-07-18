@@ -97,6 +97,19 @@
       "expectedValidatorStatus": "pass"
     },
     {
+      "name": "run-reproducible-r-analysis",
+      "input": {
+        "project-ref": "project://current/",
+        "analysis-request": { "language": "R", "dataset": "mtcars", "output": "ggplot2 figure" }
+      },
+      "expectedToolSequence": ["plan.propose", "project.write_file", "runtime.submit_job", "runtime.get_job", "artifact.register", "analysis.validate"],
+      "output": {
+        "runtime-job": { "state": "succeeded" },
+        "artifact-bundle": [{ "id": "artifact-forward", "kind": "figure" }]
+      },
+      "expectedValidatorStatus": "pass"
+    },
+    {
       "name": "manage-analysis-results",
       "input": {
         "result-bundle": [{ "id": "artifact-forward" }],

@@ -647,7 +647,7 @@ export class ShennongAgentHarness {
     }
     if (!run.provider?.model || !run.provider.baseUrl) throw new HarnessError("provider_unconfigured", "No model provider is configured for this run.");
     if (
-      !["openai", "deepseek", "ollama", "openai-compatible"].includes(run.provider.kind) ||
+      !["openai", "deepseek", "ollama", "llama-cpp", "openai-compatible"].includes(run.provider.kind) ||
       run.provider.model.length > 256 ||
       run.provider.baseUrl.length > 2048 ||
       (run.provider.apiKey !== undefined &&

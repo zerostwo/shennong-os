@@ -7,6 +7,7 @@ export type OsThread = {
   title: string;
   status: "regular" | "archived";
   projectId?: string;
+  providerId?: string;
   updatedAt?: string;
 };
 
@@ -53,12 +54,14 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
 export async function listOsThreads(projectId?: string): Promise<OsThread[]> {
   const query = new URLSearchParams();
   if (projectId) query.set("project_id", projectId);
+  else query.set("scope", "personal");
   const value = await request(`/threads${query.size ? `?${query}` : ""}`);
   return rows(value, "threads").map((item) => ({
     id: String(item.id ?? ""),
     title: String(item.title ?? "New chat"),
     status: item.status === "archived" ? "archived" as const : "regular" as const,
     projectId: typeof item.project_id === "string" ? item.project_id : undefined,
+    providerId: typeof item.provider_id === "string" ? item.provider_id : undefined,
     updatedAt: typeof item.updated_at === "string" ? item.updated_at : undefined,
   })).filter((item) => item.id.length > 0);
 }
@@ -133,7 +136,7 @@ export async function loadOsThread(id: string): Promise<LoadedOsThread> {
       const normalized = normalizeAgUiMessage(item, index);
       return normalized ? [normalized] : [];
     });
-    const messageLikes = fromAgUiMessages(agUiMessages as never, { showThinking: false });
+    const messageLikes = fromAgUiMessages(agUiMessages as never, { showThinking: true });
     const fallbackStatus: MessageStatus = { type: "complete", reason: "unknown" };
     return {
       messages: messageLikes.map((message, index) => fromThreadMessageLike(message, message.id ?? `persisted-${index}`, message.status ?? fallbackStatus)),

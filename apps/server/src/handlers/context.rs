@@ -16,6 +16,26 @@ use serde_json::{Value, json};
 use sqlx::Row;
 use uuid::Uuid;
 
+pub(crate) async fn enable_default_thread_skills(
+    state: &AppState,
+    thread_id: Uuid,
+    has_project: bool,
+) -> Result<(), ApiError> {
+    sqlx::query(
+        "INSERT INTO thread_skills(thread_id,skill_id,skill_version,enabled) \
+         SELECT $1,id,current_version,TRUE FROM skills \
+         WHERE lifecycle='active' AND owner_user_id IS NULL \
+           AND (slug='discover-shennong-data' OR ($2 AND slug='run-reproducible-r-analysis')) \
+         ON CONFLICT(thread_id,skill_id) DO NOTHING",
+    )
+    .bind(thread_id)
+    .bind(has_project)
+    .execute(&state.pool)
+    .await
+    .map_err(ApiError::database)?;
+    Ok(())
+}
+
 #[derive(Deserialize)]
 pub struct ContextQuery {
     project_id: Option<Uuid>,
@@ -489,13 +509,18 @@ pub async fn list_thread_skills(
     Path(thread_id): Path<Uuid>,
 ) -> Result<Json<Envelope<Vec<Value>>>, ApiError> {
     let actor = authenticate(&state, &headers, false).await?;
-    let project_id = sqlx::query_scalar::<_, Uuid>("SELECT project_id FROM threads WHERE id=$1")
+    let thread = sqlx::query("SELECT project_id,owner_user_id FROM threads WHERE id=$1")
         .bind(thread_id)
         .fetch_optional(&state.pool)
         .await
         .map_err(ApiError::database)?
         .ok_or_else(ApiError::not_found)?;
-    require_project_read(&state, &actor, project_id).await?;
+    let project_id = thread.get::<Option<Uuid>, _>("project_id");
+    if let Some(project_id) = project_id {
+        require_project_read(&state, &actor, project_id).await?;
+    } else if thread.get::<Uuid, _>("owner_user_id") != actor.id {
+        return Err(ApiError::not_found());
+    }
     let rows = sqlx::query(
         "SELECT s.*,v.content,v.content_sha256,v.package_version, \
          COALESCE(ts.enabled,FALSE) AS enabled,ts.skill_version AS selected_version \
@@ -521,13 +546,18 @@ pub async fn enable_thread_skill(
     Json(value): Json<SkillEnable>,
 ) -> Result<Json<Envelope<Value>>, ApiError> {
     let actor = authenticate(&state, &headers, true).await?;
-    let project_id = sqlx::query_scalar::<_, Uuid>("SELECT project_id FROM threads WHERE id=$1")
+    let thread = sqlx::query("SELECT project_id,owner_user_id FROM threads WHERE id=$1")
         .bind(thread_id)
         .fetch_optional(&state.pool)
         .await
         .map_err(ApiError::database)?
         .ok_or_else(ApiError::not_found)?;
-    require_project_write(&state, &actor, project_id).await?;
+    let project_id = thread.get::<Option<Uuid>, _>("project_id");
+    if let Some(project_id) = project_id {
+        require_project_write(&state, &actor, project_id).await?;
+    } else if thread.get::<Uuid, _>("owner_user_id") != actor.id {
+        return Err(ApiError::not_found());
+    }
     let skill = find_skill(&state, skill_id, &actor).await?;
     if skill.get::<String, _>("lifecycle") != "active" {
         return Err(ApiError::conflict("only active skills can be enabled"));
@@ -550,7 +580,7 @@ pub async fn enable_thread_skill(
     audit(
         &state,
         Some(&actor),
-        Some(project_id),
+        project_id,
         "thread.skill_enable",
         "skill",
         Some(skill_id.to_string()),
@@ -568,13 +598,18 @@ pub async fn disable_thread_skill(
     Path((thread_id, skill_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
     let actor = authenticate(&state, &headers, true).await?;
-    let project_id = sqlx::query_scalar::<_, Uuid>("SELECT project_id FROM threads WHERE id=$1")
+    let thread = sqlx::query("SELECT project_id,owner_user_id FROM threads WHERE id=$1")
         .bind(thread_id)
         .fetch_optional(&state.pool)
         .await
         .map_err(ApiError::database)?
         .ok_or_else(ApiError::not_found)?;
-    require_project_write(&state, &actor, project_id).await?;
+    let project_id = thread.get::<Option<Uuid>, _>("project_id");
+    if let Some(project_id) = project_id {
+        require_project_write(&state, &actor, project_id).await?;
+    } else if thread.get::<Uuid, _>("owner_user_id") != actor.id {
+        return Err(ApiError::not_found());
+    }
     find_skill(&state, skill_id, &actor).await?;
     let result = sqlx::query("DELETE FROM thread_skills WHERE thread_id=$1 AND skill_id=$2")
         .bind(thread_id)
@@ -588,7 +623,7 @@ pub async fn disable_thread_skill(
     audit(
         &state,
         Some(&actor),
-        Some(project_id),
+        project_id,
         "thread.skill_disable",
         "skill",
         Some(skill_id.to_string()),
@@ -832,7 +867,7 @@ fn validate_content(value: &str) -> Result<(), ApiError> {
 fn validate_provider_kind(value: &str) -> Result<(), ApiError> {
     if matches!(
         value,
-        "openai" | "deepseek" | "ollama" | "openai-compatible"
+        "openai" | "deepseek" | "ollama" | "llama-cpp" | "openai-compatible"
     ) {
         Ok(())
     } else {

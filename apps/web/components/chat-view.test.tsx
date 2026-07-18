@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChatView } from "./chat-view";
 
-const mocks = vi.hoisted(() => ({ runtimeProvider: vi.fn() }));
+const mocks = vi.hoisted(() => ({ runtimeProvider: vi.fn(), thread: vi.fn(), setProviderId: vi.fn(), setThinkingLevel: vi.fn() }));
 
 vi.mock("@/components/app-shell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -13,26 +13,33 @@ vi.mock("@/components/assistant-ui/runtime-provider", () => ({
     mocks.runtimeProvider(props);
     return <div data-testid="runtime-provider">{props.children}</div>;
   },
+  useShennongAssistantRuntime: () => ({
+    providers: [{ id: "provider-1", name: "Local", model: "qwen", enabled: true }],
+    providerId: "provider-1",
+    setProviderId: mocks.setProviderId,
+    thinkingLevel: "medium",
+    setThinkingLevel: mocks.setThinkingLevel,
+  }),
 }));
-vi.mock("@/components/assistant-ui/thread", () => ({ ShennongThread: () => <div>Assistant thread</div>, ThreadSkillSelector: () => <button>Skills</button> }));
+vi.mock("@/components/assistant-ui/thread", () => ({ ShennongThread: (props: unknown) => { mocks.thread(props); return <div>Assistant thread</div>; }, ThreadSkillSelector: () => <button>Skills</button> }));
 
-describe("ChatView project boundary", () => {
-  beforeEach(() => mocks.runtimeProvider.mockClear());
+describe("ChatView conversation scope", () => {
+  beforeEach(() => { mocks.runtimeProvider.mockClear(); mocks.thread.mockClear(); });
 
-  it("shows a Project CTA without mounting an Agent runtime", () => {
+  it("mounts a personal Agent runtime without requiring a Project", () => {
     render(<ChatView />);
 
-    expect(screen.getByRole("heading", { name: "Choose a research project" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open projects" })).toHaveAttribute("href", "/projects");
-    expect(screen.queryByTestId("runtime-provider")).not.toBeInTheDocument();
-    expect(mocks.runtimeProvider).not.toHaveBeenCalled();
+    expect(screen.getByTestId("runtime-provider")).toBeInTheDocument();
+    expect(screen.getByText("Assistant thread")).toBeInTheDocument();
+    expect(mocks.runtimeProvider).toHaveBeenCalledWith(expect.objectContaining({ projectId: undefined }));
   });
 
   it("mounts the Agent runtime with the explicit Project", () => {
-    render(<ChatView projectId="project-1" />);
+    render(<ChatView projectId="project-1" initialPrompt="Inspect project://current/resources/resource-1" />);
 
     expect(screen.getByTestId("runtime-provider")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Skills" })).toBeInTheDocument();
     expect(mocks.runtimeProvider).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project-1" }));
+    expect(mocks.thread).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project-1", initialPrompt: "Inspect project://current/resources/resource-1" }));
   });
 });

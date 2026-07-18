@@ -86,7 +86,7 @@ const TOOLS: &[ToolDefinition] = &[
     tool("skill.load", "read", false),
     tool("plan.propose", "write", true),
     tool("plan.update", "write", true),
-    tool("db.discover_resources", "read", true),
+    tool("db.discover_resources", "read", false),
     tool("db.inspect_resource", "read", false),
     tool("db.query_resource", "read", false),
     tool("db.get_provenance", "read", false),
@@ -160,77 +160,129 @@ pub async fn agent_gateway(
     let run_id = parse_runtime_uuid(&identity.run_id, "runId")?;
     let requested_project_id = headers
         .get("x-shennong-project-id")
+        .map(|value| {
+            value
+                .to_str()
+                .ok()
+                .and_then(|value| value.parse::<Uuid>().ok())
+                .ok_or_else(|| ApiError::invalid("x-shennong-project-id must be a UUID"))
+        })
+        .transpose()?;
+    let requested_provider_id = headers
+        .get("x-shennong-provider-id")
+        .map(|value| {
+            value
+                .to_str()
+                .ok()
+                .and_then(|value| value.parse::<Uuid>().ok())
+                .ok_or_else(|| ApiError::invalid("x-shennong-provider-id must be a UUID"))
+        })
+        .transpose()?;
+    let thinking_level = headers
+        .get("x-shennong-thinking-level")
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<Uuid>().ok())
-        .ok_or_else(|| {
-            ApiError::new(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "project_required",
-                "x-shennong-project-id is required",
-            )
-        })?;
+        .unwrap_or("medium");
+    if !matches!(
+        thinking_level,
+        "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+    ) {
+        return Err(ApiError::invalid("x-shennong-thinking-level is invalid"));
+    }
+    if let Some(provider_id) = requested_provider_id {
+        let available = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM model_providers WHERE id=$1 AND owner_user_id=$2 AND enabled)",
+        )
+        .bind(provider_id)
+        .bind(actor.id)
+        .fetch_one(&state.pool)
+        .await
+        .map_err(ApiError::database)?;
+        if !available {
+            return Err(ApiError::invalid("model provider is unavailable"));
+        }
+    }
     let supplied_parent_run_id = identity
         .parent_run_id
         .as_deref()
         .map(|value| parse_runtime_uuid(value, "parentRunId"))
         .transpose()?;
-    require_project_write(&state, &actor, requested_project_id).await?;
-    let project_exists: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM projects WHERE id=$1 AND status='active')")
-            .bind(requested_project_id)
-            .fetch_one(&state.pool)
-            .await
-            .map_err(ApiError::database)?;
-    if !project_exists {
-        return Err(ApiError::not_found());
+    if let Some(project_id) = requested_project_id {
+        require_project_write(&state, &actor, project_id).await?;
+        let project_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM projects WHERE id=$1 AND status='active')",
+        )
+        .bind(project_id)
+        .fetch_one(&state.pool)
+        .await
+        .map_err(ApiError::database)?;
+        if !project_exists {
+            return Err(ApiError::not_found());
+        }
     }
-    let existing_project_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT project_id FROM threads WHERE id=$1 AND status='active'")
+    let existing =
+        sqlx::query("SELECT project_id,owner_user_id FROM threads WHERE id=$1 AND status='active'")
             .bind(thread_id)
             .fetch_optional(&state.pool)
             .await
             .map_err(ApiError::database)?;
-    let created = if let Some(existing_project_id) = existing_project_id {
-        if existing_project_id != requested_project_id {
+    let created = if let Some(existing) = existing {
+        if existing.get::<Option<Uuid>, _>("project_id") != requested_project_id
+            || (requested_project_id.is_none()
+                && existing.get::<Uuid, _>("owner_user_id") != actor.id)
+        {
             return Err(ApiError::not_found());
         }
         false
     } else {
         let inserted = sqlx::query(
-            "INSERT INTO threads(id,project_id,owner_user_id,title,status) \
-             VALUES($1,$2,$3,'New chat','active') ON CONFLICT(id) DO NOTHING",
+            "INSERT INTO threads(id,project_id,owner_user_id,provider_id,title,status) \
+             VALUES($1,$2,$3,$4,'New chat','active') ON CONFLICT(id) DO NOTHING",
         )
         .bind(thread_id)
         .bind(requested_project_id)
         .bind(actor.id)
+        .bind(requested_provider_id)
         .execute(&state.pool)
         .await
         .map_err(ApiError::database)?
         .rows_affected();
-        let actual_project_id: Uuid =
-            sqlx::query_scalar("SELECT project_id FROM threads WHERE id=$1 AND status='active'")
-                .bind(thread_id)
-                .fetch_optional(&state.pool)
-                .await
-                .map_err(ApiError::database)?
-                .ok_or_else(ApiError::not_found)?;
-        if actual_project_id != requested_project_id {
+        let actual = sqlx::query(
+            "SELECT project_id,owner_user_id FROM threads WHERE id=$1 AND status='active'",
+        )
+        .bind(thread_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(ApiError::database)?
+        .ok_or_else(ApiError::not_found)?;
+        if actual.get::<Option<Uuid>, _>("project_id") != requested_project_id
+            || (requested_project_id.is_none()
+                && actual.get::<Uuid, _>("owner_user_id") != actor.id)
+        {
             return Err(ApiError::not_found());
         }
         inserted == 1
     };
     let project_id = requested_project_id;
     if created {
+        super::context::enable_default_thread_skills(&state, thread_id, project_id.is_some())
+            .await?;
         audit(
             &state,
             Some(&actor),
-            Some(project_id),
+            project_id,
             "thread.create_on_first_run",
             "thread",
             Some(thread_id.to_string()),
             json!({"source":"agent_gateway"}),
         )
         .await?;
+    } else if let Some(provider_id) = requested_provider_id {
+        sqlx::query("UPDATE threads SET provider_id=$2,updated_at=NOW() WHERE id=$1")
+            .bind(thread_id)
+            .bind(provider_id)
+            .execute(&state.pool)
+            .await
+            .map_err(ApiError::database)?;
     }
     let parent_run_id = if let Some(resume) = identity.resume.as_deref() {
         if created {
@@ -261,7 +313,7 @@ pub async fn agent_gateway(
         .bind(thread_id)
         .bind(supplied_parent_run_id)
         .bind(actor.id)
-        .bind(json!({"source":"agent_gateway"}))
+        .bind(json!({"source":"agent_gateway","thinking_level":thinking_level}))
         .execute(&state.pool)
         .await
         .map_err(ApiError::database)?
@@ -274,7 +326,7 @@ pub async fn agent_gateway(
     audit(
         &state,
         Some(&actor),
-        Some(project_id),
+        project_id,
         "agent.run_requested",
         "run",
         Some(run_id.to_string()),
@@ -348,7 +400,7 @@ pub async fn agent_gateway(
 async fn resolve_agent_resume(
     state: &AppState,
     actor: &AuthUser,
-    project_id: Uuid,
+    project_id: Option<Uuid>,
     thread_id: Uuid,
     resumed_run_id: Uuid,
     supplied_parent_run_id: Option<Uuid>,
@@ -404,7 +456,7 @@ async fn resolve_agent_resume(
     .ok_or_else(ApiError::forbidden)?;
     let original_run_id: Uuid = approval.get("run_id");
     if approval.get::<Uuid, _>("requested_by_user_id") != actor.id
-        || approval.get::<Uuid, _>("project_id") != project_id
+        || approval.get::<Option<Uuid>, _>("project_id") != project_id
         || approval.get::<Uuid, _>("thread_id") != thread_id
         || supplied_parent_run_id.is_some_and(|id| id != original_run_id)
     {
@@ -434,7 +486,7 @@ async fn resolve_agent_resume(
         super::audit_tx(
             &mut tx,
             Some(actor.id),
-            Some(project_id),
+            project_id,
             "agent.approval_expired",
             "run_approval",
             Some(approval_id.to_string()),
@@ -500,7 +552,7 @@ async fn resolve_agent_resume(
     super::audit_tx(
         &mut tx,
         Some(actor.id),
-        Some(project_id),
+        project_id,
         if approved {
             "agent.approval_approved"
         } else {
@@ -521,9 +573,10 @@ const BOOTSTRAP_RUN_QUERY: &str = "SELECT r.id,r.project_id,r.thread_id,r.parent
             p.name AS project_name,p.description AS project_description, \
             COALESCE(pm.role,'') AS project_role \
      FROM runs r JOIN users u ON u.id=r.requested_by_user_id \
-     JOIN threads t ON t.id=r.thread_id JOIN projects p ON p.id=r.project_id \
+     JOIN threads t ON t.id=r.thread_id LEFT JOIN projects p ON p.id=r.project_id \
      LEFT JOIN project_members pm ON pm.project_id=r.project_id AND pm.user_id=r.requested_by_user_id \
-     WHERE r.id=$1 AND u.status='active' AND p.status='active'";
+     WHERE r.id=$1 AND u.status='active' AND (r.project_id IS NULL OR p.status='active') \
+       AND (r.project_id IS NOT NULL OR t.owner_user_id=r.requested_by_user_id)";
 
 pub async fn bootstrap_run(
     State(state): State<AppState>,
@@ -549,15 +602,15 @@ pub async fn bootstrap_run(
         ));
     }
     let user_id: Uuid = row.get("requested_by_user_id");
-    let project_id: Uuid = row.get("project_id");
+    let project_id: Option<Uuid> = row.get("project_id");
     let user_role: String = row.get("user_role");
     let project_role: String = row.get("project_role");
-    if user_role != "admin" && project_role.is_empty() {
+    if project_id.is_some() && user_role != "admin" && project_role.is_empty() {
         return Err(ApiError::not_found());
     }
     let provider = load_provider(&state, user_id, row.get("provider_id")).await?;
     let skills = load_run_skills(&state, value.thread_id, user_id).await?;
-    let allowed_tools = allowed_tools(&user_role, &project_role, &skills);
+    let allowed_tools = allowed_tools(&user_role, &project_role, project_id.is_some(), &skills);
     let allowed_project_read = declared_string_permissions(&skills, "projectRead");
     let allowed_project_write = declared_string_permissions(&skills, "projectWrite");
     let allowed_compute_profiles = declared_string_permissions(&skills, "computeProfiles");
@@ -576,7 +629,11 @@ pub async fn bootstrap_run(
     .bind(sha256(&capability))
     .bind(expires_at)
     .bind(json!(allowed_tools))
-    .bind(json!(tool_profile(&project_role, &user_role)))
+    .bind(json!(tool_profile(
+        &project_role,
+        &user_role,
+        project_id.is_some()
+    )))
     .bind(json!(allowed_project_read))
     .bind(json!(allowed_project_write))
     .bind(json!(allowed_compute_profiles))
@@ -595,25 +652,40 @@ pub async fn bootstrap_run(
     .await?;
     let messages = load_messages(&state, value.thread_id).await?;
     let memories = load_memories(&state, user_id, project_id).await?;
-    let artifacts = load_artifacts(&state, project_id).await?;
+    let artifacts = if let Some(project_id) = project_id {
+        load_artifacts(&state, project_id).await?
+    } else {
+        Vec::new()
+    };
+    let mut scope = json!({
+        "userId":user_id,"threadId":value.thread_id,
+        "role":if user_role == "admin" {"admin"} else {"user"},
+        "providerDataPolicy":provider["dataPolicy"]
+    });
+    if let Some(project_id) = project_id {
+        scope["projectId"] = json!(project_id);
+    }
+    let project = project_id.map(|project_id| {
+        json!({
+            "id":project_id,
+            "name":row.get::<Option<String>,_>("project_name").unwrap_or_default(),
+            "description":row.get::<Option<String>,_>("project_description").unwrap_or_default()
+        })
+    });
     Ok(Json(Envelope {
         data: json!({
             "runId":value.run_id,
             "parentRunId":value.parent_run_id,
-            "scope":{
-                "userId":user_id,"threadId":value.thread_id,"projectId":project_id,
-                "role":if user_role == "admin" {"admin"} else {"user"},
-                "providerDataPolicy":provider["dataPolicy"]
-            },
+            "scope":scope,
             "runCapabilityToken":capability,
             "provider":provider,
             "messages":messages,
             "context":{
-                "project":{"id":project_id,"name":row.get::<String,_>("project_name"),"description":row.get::<String,_>("project_description")},
+                "project":project,
                 "memories":memories,"artifacts":artifacts,"selectedSkills":skills
             },
-            "toolProfile":tool_profile(&project_role, &user_role),
-            "thinkingLevel":"medium","timeoutMs":600000,
+            "toolProfile":tool_profile(&project_role, &user_role, project_id.is_some()),
+            "thinkingLevel":row.get::<Value,_>("input").get("thinking_level").and_then(Value::as_str).unwrap_or("medium"),"timeoutMs":600000,
             "resumeApproval":resume_approval
         }),
     }))
@@ -832,7 +904,7 @@ pub async fn finish_run(
          VALUES($1,$2,'agent.run_finished','run',$3,$4)",
     )
     .bind(run.get::<Uuid, _>("requested_by_user_id"))
-    .bind(run.get::<Uuid, _>("project_id"))
+    .bind(run.get::<Option<Uuid>, _>("project_id"))
     .bind(id.to_string())
     .bind(json!({"status":status}))
     .execute(&mut *tx)
@@ -1042,7 +1114,7 @@ pub async fn execute_tool(
 
 fn backend_evidence(
     run_id: Uuid,
-    project_id: Uuid,
+    project_id: Option<Uuid>,
     tool_call_id: &str,
     tool_name: &str,
     content: &Value,
@@ -1154,7 +1226,7 @@ fn backend_evidence(
 }
 
 struct CapabilityContext {
-    project_id: Uuid,
+    project_id: Option<Uuid>,
     user_id: Uuid,
     email: String,
     display_name: String,
@@ -1173,9 +1245,9 @@ struct CapabilityContext {
 const CAPABILITY_CONTEXT_QUERY: &str = "SELECT r.project_id,r.requested_by_user_id,r.status,r.capability_token_hash,r.capability_expires_at,r.input, \
             u.email,u.display_name,u.role AS user_role,COALESCE(pm.role,'') AS project_role \
      FROM runs r JOIN users u ON u.id=r.requested_by_user_id \
-     JOIN projects p ON p.id=r.project_id \
+     LEFT JOIN projects p ON p.id=r.project_id \
      LEFT JOIN project_members pm ON pm.project_id=r.project_id AND pm.user_id=r.requested_by_user_id \
-     WHERE r.id=$1 AND u.status='active' AND p.status='active'";
+     WHERE r.id=$1 AND u.status='active' AND (r.project_id IS NULL OR p.status='active')";
 
 async fn load_capability_context(
     state: &AppState,
@@ -1230,7 +1302,7 @@ fn capability_decision(
 ) -> Result<(), &'static str> {
     if context.status != "running"
         || request.user_id != context.user_id
-        || request.project_id != Some(context.project_id)
+        || request.project_id != context.project_id
         || context
             .token_expires
             .is_none_or(|expires| expires <= Utc::now())
@@ -1264,7 +1336,10 @@ fn capability_decision(
     {
         return Err("tool_not_in_run_capability");
     }
-    if context.user_role != "admin" && context.project_role.is_empty() {
+    if context.project_id.is_some()
+        && context.user_role != "admin"
+        && context.project_role.is_empty()
+    {
         return Err("project_access_revoked");
     }
     match definition.risk {
@@ -1334,38 +1409,51 @@ async fn dispatch_tool(
         | "db.inspect_resource"
         | "db.query_resource"
         | "db.get_provenance" => {
-            super::data_plane::execute_db_tool(state, context.project_id, name, arguments).await
+            if let Some(project_id) = context.project_id {
+                super::data_plane::execute_db_tool(state, project_id, name, arguments).await
+            } else if name == "db.discover_resources" {
+                super::data_plane::execute_public_db_discovery(state, arguments).await
+            } else {
+                Err(ApiError::invalid("this tool requires a Project"))
+            }
         }
         "project.list_files" => {
-            list_project_files_tool(
-                state,
-                context.project_id,
-                &context.allowed_project_read,
-                arguments,
-            )
-            .await
+            let project_id = context
+                .project_id
+                .ok_or_else(|| ApiError::invalid("this tool requires a Project"))?;
+            list_project_files_tool(state, project_id, &context.allowed_project_read, arguments)
+                .await
         }
         "project.read_file" => {
-            read_project_file_tool(
-                state,
-                context.project_id,
-                &context.allowed_project_read,
-                arguments,
-            )
-            .await
+            let project_id = context
+                .project_id
+                .ok_or_else(|| ApiError::invalid("this tool requires a Project"))?;
+            read_project_file_tool(state, project_id, &context.allowed_project_read, arguments)
+                .await
         }
         "project.write_file" => {
+            let project_id = context
+                .project_id
+                .ok_or_else(|| ApiError::invalid("this tool requires a Project"))?;
             write_project_file_tool(
                 state,
                 actor,
-                context.project_id,
+                project_id,
                 &context.allowed_project_write,
                 arguments,
             )
             .await
         }
-        "environment.plan" => plan_environment_tool(context.project_id, arguments),
+        "environment.plan" => plan_environment_tool(
+            context
+                .project_id
+                .ok_or_else(|| ApiError::invalid("this tool requires a Project"))?,
+            arguments,
+        ),
         "runtime.submit_job" => {
+            let project_id = context
+                .project_id
+                .ok_or_else(|| ApiError::invalid("this tool requires a Project"))?;
             let requested_profile = arguments
                 .pointer("/job_spec/worker_profile")
                 .and_then(Value::as_str)
@@ -1384,7 +1472,7 @@ async fn dispatch_tool(
             }
             let resolved_arguments = resolve_runtime_project_files(
                 state,
-                context.project_id,
+                project_id,
                 &context.allowed_project_read,
                 arguments,
             )
@@ -1392,7 +1480,7 @@ async fn dispatch_tool(
             submit_agent_job(
                 state,
                 actor,
-                context.project_id,
+                project_id,
                 run_id,
                 tool_call_id,
                 &resolved_arguments,
@@ -1400,6 +1488,9 @@ async fn dispatch_tool(
             .await
         }
         "runtime.get_job" | "runtime.cancel_job" => {
+            let project_id = context
+                .project_id
+                .ok_or_else(|| ApiError::invalid("this tool requires a Project"))?;
             let id = arguments
                 .get("job_id")
                 .and_then(Value::as_str)
@@ -1408,7 +1499,7 @@ async fn dispatch_tool(
             agent_job_action(
                 state,
                 actor,
-                context.project_id,
+                project_id,
                 id,
                 if name.ends_with("cancel_job") {
                     "cancel"
@@ -1423,7 +1514,15 @@ async fn dispatch_tool(
             .await
         }
         "artifact.register" => {
-            register_artifact_tool(state, actor, context.project_id, arguments).await
+            register_artifact_tool(
+                state,
+                actor,
+                context
+                    .project_id
+                    .ok_or_else(|| ApiError::invalid("this tool requires a Project"))?,
+                arguments,
+            )
+            .await
         }
         // analysis.validate is executed deterministically inside Agent Runtime.
         "analysis.validate" => Err(ApiError::invalid(
@@ -1646,7 +1745,12 @@ async fn load_run_skills(
         .collect())
 }
 
-fn allowed_tools(user_role: &str, project_role: &str, skills: &[Value]) -> Vec<&'static str> {
+fn allowed_tools(
+    user_role: &str,
+    project_role: &str,
+    has_project: bool,
+    skills: &[Value],
+) -> Vec<&'static str> {
     let declared = skills
         .iter()
         .flat_map(|skill| {
@@ -1661,6 +1765,11 @@ fn allowed_tools(user_role: &str, project_role: &str, skills: &[Value]) -> Vec<&
     TOOLS
         .iter()
         .filter(|definition| {
+            let scope_allows = has_project
+                || matches!(
+                    definition.name,
+                    "skill.load" | "analysis.validate" | "db.discover_resources"
+                );
             let role_allows = definition.risk == "read"
                 || user_role == "admin"
                 || matches!(project_role, "owner" | "admin" | "editor");
@@ -1669,7 +1778,7 @@ fn allowed_tools(user_role: &str, project_role: &str, skills: &[Value]) -> Vec<&
                     definition.name,
                     "skill.load" | "plan.propose" | "plan.update" | "analysis.validate"
                 );
-            role_allows && skill_allows
+            scope_allows && role_allows && skill_allows
         })
         .map(|definition| definition.name)
         .collect()
@@ -1693,8 +1802,10 @@ fn declared_string_permissions(skills: &[Value], key: &str) -> Vec<String> {
     permissions
 }
 
-fn tool_profile(project_role: &str, user_role: &str) -> &'static str {
-    if user_role == "admin" || matches!(project_role, "owner" | "admin" | "editor") {
+fn tool_profile(project_role: &str, user_role: &str, has_project: bool) -> &'static str {
+    if !has_project {
+        "global-read"
+    } else if user_role == "admin" || matches!(project_role, "owner" | "admin" | "editor") {
         "project-write"
     } else {
         "project-analysis"
@@ -1704,12 +1815,12 @@ fn tool_profile(project_role: &str, user_role: &str) -> &'static str {
 async fn load_memories(
     state: &AppState,
     user_id: Uuid,
-    project_id: Uuid,
+    project_id: Option<Uuid>,
 ) -> Result<Vec<Value>, ApiError> {
     let rows = sqlx::query(
         "SELECT m.id,m.title,v.content,v.content_sha256 FROM memories m JOIN memory_versions v \
          ON v.memory_id=m.id AND v.version=m.current_version WHERE m.owner_user_id=$1 \
-         AND m.lifecycle='active' AND (m.project_id IS NULL OR m.project_id=$2) \
+         AND m.lifecycle='active' AND (m.project_id IS NULL OR ($2::uuid IS NOT NULL AND m.project_id=$2)) \
          ORDER BY m.updated_at DESC LIMIT 50",
     )
     .bind(user_id)
@@ -2406,12 +2517,12 @@ mod tests {
     }
 
     #[test]
-    fn resource_discovery_requires_an_authorized_project_scope() {
+    fn public_resource_discovery_does_not_require_a_project_scope() {
         let definition = TOOLS
             .iter()
             .find(|definition| definition.name == "db.discover_resources")
             .expect("registered discovery tool");
-        assert!(definition.project_required);
+        assert!(!definition.project_required);
     }
 
     #[test]
@@ -2467,7 +2578,7 @@ mod tests {
 
     #[test]
     fn unskilled_runs_receive_only_core_governed_tools() {
-        let names = allowed_tools("admin", "owner", &[]);
+        let names = allowed_tools("admin", "owner", true, &[]);
         assert_eq!(
             names,
             vec![
@@ -2483,13 +2594,17 @@ mod tests {
             "projectWrite":[],
             "computeProfiles":[]
         }})];
-        let names = allowed_tools("user", "viewer", &skills);
+        let names = allowed_tools("user", "viewer", true, &skills);
         assert!(names.contains(&"project.read_file"));
         assert!(!names.contains(&"project.write_file"));
         assert_eq!(
             declared_string_permissions(&skills, "projectRead"),
             vec!["project://current/results/"]
         );
+
+        let personal = allowed_tools("admin", "", false, &skills);
+        assert_eq!(personal, vec!["skill.load", "analysis.validate"]);
+        assert_eq!(tool_profile("", "admin", false), "global-read");
     }
 
     #[test]
@@ -2498,7 +2613,7 @@ mod tests {
         let project_id = Uuid::new_v4();
         let query = backend_evidence(
             run_id,
-            project_id,
+            Some(project_id),
             "tool-query",
             "db.query_resource",
             &json!({"resource":"cohort-a","rows":[{"value":1}]}),
@@ -2516,7 +2631,7 @@ mod tests {
         assert!(
             backend_evidence(
                 run_id,
-                project_id,
+                Some(project_id),
                 "tool-job",
                 "runtime.get_job",
                 &json!({"id":Uuid::new_v4(),"status":"running"}),
@@ -2527,7 +2642,7 @@ mod tests {
         let artifact_id = Uuid::new_v4();
         let runtime = backend_evidence(
             run_id,
-            project_id,
+            Some(project_id),
             "tool-job-complete",
             "runtime.get_job",
             &json!({
@@ -2548,7 +2663,7 @@ mod tests {
         assert!(
             backend_evidence(
                 run_id,
-                project_id,
+                Some(project_id),
                 "tool-plan",
                 "plan.propose",
                 &json!({"id":Uuid::new_v4()}),

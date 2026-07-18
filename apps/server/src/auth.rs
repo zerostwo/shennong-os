@@ -19,6 +19,8 @@ pub struct AuthUser {
     pub id: Uuid,
     pub email: String,
     pub display_name: String,
+    pub username: String,
+    pub avatar_url: Option<String>,
     pub role: String,
     #[serde(skip)]
     pub session_id: Uuid,
@@ -30,10 +32,13 @@ pub struct AuthUser {
 
 impl AuthUser {
     pub(crate) fn internal(id: Uuid, email: String, display_name: String, role: String) -> Self {
+        let username = email.split('@').next().unwrap_or("user").to_owned();
         Self {
             id,
             email,
             display_name,
+            username,
+            avatar_url: None,
             role,
             session_id: Uuid::nil(),
             via_cookie: false,
@@ -56,7 +61,7 @@ pub async fn authenticate(
     let (token, via_cookie) = session_token(headers).ok_or_else(ApiError::unauthorized)?;
     let token_hash = sha256(token.as_bytes());
     let row = sqlx::query(
-        "SELECT u.id,u.email,u.display_name,u.role,s.id AS session_id,s.csrf_hash \
+        "SELECT u.id,u.email,u.display_name,u.username,u.avatar_url,u.role,s.id AS session_id,s.csrf_hash \
          FROM sessions s JOIN users u ON u.id=s.user_id \
          WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>NOW() \
            AND u.status='active'",
@@ -70,6 +75,8 @@ pub async fn authenticate(
         id: row.try_get("id").map_err(ApiError::database)?,
         email: row.try_get("email").map_err(ApiError::database)?,
         display_name: row.try_get("display_name").map_err(ApiError::database)?,
+        username: row.try_get("username").map_err(ApiError::database)?,
+        avatar_url: row.try_get("avatar_url").map_err(ApiError::database)?,
         role: row.try_get("role").map_err(ApiError::database)?,
         session_id: row.try_get("session_id").map_err(ApiError::database)?,
         via_cookie,

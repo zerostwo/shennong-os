@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     "content-type": "application/json",
     "x-shennong-ui": "assistant-ui",
   });
-  for (const name of ["cookie", "origin", "x-csrf-token", "x-shennong-project-id"]) {
+  for (const name of ["cookie", "origin", "x-csrf-token", "x-shennong-project-id", "x-shennong-provider-id", "x-shennong-thinking-level"]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }

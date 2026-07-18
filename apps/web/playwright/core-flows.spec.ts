@@ -11,12 +11,13 @@ async function signIn(page: Page) {
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByText("Your secure session is active.")).toBeVisible();
   await page.getByRole("link", { name: "Open Admin center" }).click();
-  await expect(page).toHaveURL(/\/admin\/invites/);
+  await expect(page).toHaveURL(/\/admin\/dashboard/);
 }
 
-test("the public home enforces a Project boundary and Search opens as a centered dialog", async ({ page }) => {
+test("the home opens a personal chat and Search opens as a centered dialog", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Choose a research project" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What can I help you analyze?" })).toBeVisible();
+  await expect(page.getByPlaceholder("Ask Shennong")).toBeVisible();
   const mobileMenu = page.getByRole("button", { name: "Open navigation" });
   if (await mobileMenu.isVisible()) await mobileMenu.click();
   await page.getByRole("button", { name: "Search" }).click();
@@ -72,6 +73,11 @@ test("authenticated product modules load without browser or API errors", async (
     "/console/jobs",
     "/console/sessions",
     "/admin/invites",
+    "/admin/dashboard",
+    "/admin/users",
+    "/admin/models",
+    "/admin/providers",
+    "/admin/monitoring",
     "/admin/audit",
   ]) {
     await page.goto(route);
@@ -86,8 +92,7 @@ test("retired legacy entry points redirect to a supported V1 surface", async ({ 
     ["/console/my-data", /\/console\/jobs/],
     ["/console/uploads", /\/projects/],
     ["/console/api-access", /\/console\/jobs/],
-    ["/admin/dashboard", /\/admin\/invites/],
-    ["/admin/settings", /\/admin\/invites/],
+    ["/admin/settings", /\/admin\/security/],
     ["/catalog/collections", /\/resources/],
   ] as const) {
     await page.goto(legacy);
