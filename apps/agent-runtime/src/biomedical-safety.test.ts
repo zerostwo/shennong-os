@@ -165,7 +165,18 @@ test("tool policy intersects profile, project, provider, and Skill permissions",
   const projectless = baseRun();
   delete projectless.scope.projectId;
   assert.deepEqual(policy.check(projectless, read), { allowed: false, reason: "project_scope_required" });
-  assert.deepEqual(policy.check(projectless, discover), { allowed: false, reason: "project_scope_required" });
+  assert.deepEqual(policy.check(projectless, discover), { allowed: false, reason: "tool_not_declared_by_selected_skills" });
+  projectless.context = {
+    selectedSkills: [{
+      id: "zerostwo/discover-shennong-data",
+      version: "1.0.0",
+      digest: `sha256:${"a".repeat(64)}`,
+      name: "discover-shennong-data",
+      description: "Discover governed public Resources",
+      permissions: { tools: ["db.discover_resources"], projectRead: [], projectWrite: [], datasetAccess: "public", networkHosts: [], computeProfiles: [], approvals: [] },
+    }],
+  };
+  assert.deepEqual(policy.check(projectless, discover), { allowed: true });
 
   const publicProvider = baseRun();
   publicProvider.scope.providerDataPolicy = "public_only";

@@ -240,6 +240,7 @@ pub async fn create_thread(
     let row = sqlx::query("INSERT INTO threads(id,project_id,owner_user_id,provider_id,title) VALUES($1,$2,$3,$4,$5) RETURNING *")
         .bind(id).bind(value.project_id).bind(actor.id).bind(value.provider_id).bind(title)
         .fetch_one(&state.pool).await.map_err(ApiError::database)?;
+    super::context::enable_default_thread_skills(&state, id, value.project_id.is_some()).await?;
     audit(
         &state,
         Some(&actor),

@@ -618,6 +618,33 @@ pub(crate) async fn execute_db_tool(
     Ok(response.body)
 }
 
+pub(crate) async fn execute_public_db_discovery(
+    state: &AppState,
+    arguments: &Value,
+) -> Result<Value, ApiError> {
+    let arguments = arguments
+        .as_object()
+        .ok_or_else(|| ApiError::invalid("discovery arguments must be an object"))?;
+    let query = match arguments.get("q") {
+        Some(Value::String(value)) if value.len() <= 256 => value.trim().to_owned(),
+        Some(Value::String(_)) => {
+            return Err(ApiError::invalid("q must be at most 256 characters"));
+        }
+        Some(_) => return Err(ApiError::invalid("q must be a string")),
+        None => String::new(),
+    };
+    let limit = bounded_agent_resource_limit(arguments.get("limit"))?;
+    let mut params = vec![("limit", limit.to_string())];
+    if !query.is_empty() {
+        params.push(("q", query));
+    }
+    let response = db_request(state, Method::GET, &["resources"], &params, None).await?;
+    if !response.status.is_success() {
+        return Err(public_data_plane_error(response.status));
+    }
+    Ok(response.body)
+}
+
 fn agent_resource_query_body(project_id: Uuid, arguments: &Value) -> Result<Value, ApiError> {
     let object = arguments
         .as_object()

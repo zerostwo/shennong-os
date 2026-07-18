@@ -86,7 +86,7 @@ const TOOLS: &[ToolDefinition] = &[
     tool("skill.load", "read", false),
     tool("plan.propose", "write", true),
     tool("plan.update", "write", true),
-    tool("db.discover_resources", "read", true),
+    tool("db.discover_resources", "read", false),
     tool("db.inspect_resource", "read", false),
     tool("db.query_resource", "read", false),
     tool("db.get_provenance", "read", false),
@@ -168,6 +168,39 @@ pub async fn agent_gateway(
                 .ok_or_else(|| ApiError::invalid("x-shennong-project-id must be a UUID"))
         })
         .transpose()?;
+    let requested_provider_id = headers
+        .get("x-shennong-provider-id")
+        .map(|value| {
+            value
+                .to_str()
+                .ok()
+                .and_then(|value| value.parse::<Uuid>().ok())
+                .ok_or_else(|| ApiError::invalid("x-shennong-provider-id must be a UUID"))
+        })
+        .transpose()?;
+    let thinking_level = headers
+        .get("x-shennong-thinking-level")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("medium");
+    if !matches!(
+        thinking_level,
+        "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+    ) {
+        return Err(ApiError::invalid("x-shennong-thinking-level is invalid"));
+    }
+    if let Some(provider_id) = requested_provider_id {
+        let available = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM model_providers WHERE id=$1 AND owner_user_id=$2 AND enabled)",
+        )
+        .bind(provider_id)
+        .bind(actor.id)
+        .fetch_one(&state.pool)
+        .await
+        .map_err(ApiError::database)?;
+        if !available {
+            return Err(ApiError::invalid("model provider is unavailable"));
+        }
+    }
     let supplied_parent_run_id = identity
         .parent_run_id
         .as_deref()
@@ -202,12 +235,13 @@ pub async fn agent_gateway(
         false
     } else {
         let inserted = sqlx::query(
-            "INSERT INTO threads(id,project_id,owner_user_id,title,status) \
-             VALUES($1,$2,$3,'New chat','active') ON CONFLICT(id) DO NOTHING",
+            "INSERT INTO threads(id,project_id,owner_user_id,provider_id,title,status) \
+             VALUES($1,$2,$3,$4,'New chat','active') ON CONFLICT(id) DO NOTHING",
         )
         .bind(thread_id)
         .bind(requested_project_id)
         .bind(actor.id)
+        .bind(requested_provider_id)
         .execute(&state.pool)
         .await
         .map_err(ApiError::database)?
@@ -230,6 +264,8 @@ pub async fn agent_gateway(
     };
     let project_id = requested_project_id;
     if created {
+        super::context::enable_default_thread_skills(&state, thread_id, project_id.is_some())
+            .await?;
         audit(
             &state,
             Some(&actor),
@@ -240,6 +276,13 @@ pub async fn agent_gateway(
             json!({"source":"agent_gateway"}),
         )
         .await?;
+    } else if let Some(provider_id) = requested_provider_id {
+        sqlx::query("UPDATE threads SET provider_id=$2,updated_at=NOW() WHERE id=$1")
+            .bind(thread_id)
+            .bind(provider_id)
+            .execute(&state.pool)
+            .await
+            .map_err(ApiError::database)?;
     }
     let parent_run_id = if let Some(resume) = identity.resume.as_deref() {
         if created {
@@ -270,7 +313,7 @@ pub async fn agent_gateway(
         .bind(thread_id)
         .bind(supplied_parent_run_id)
         .bind(actor.id)
-        .bind(json!({"source":"agent_gateway"}))
+        .bind(json!({"source":"agent_gateway","thinking_level":thinking_level}))
         .execute(&state.pool)
         .await
         .map_err(ApiError::database)?
@@ -642,7 +685,7 @@ pub async fn bootstrap_run(
                 "memories":memories,"artifacts":artifacts,"selectedSkills":skills
             },
             "toolProfile":tool_profile(&project_role, &user_role, project_id.is_some()),
-            "thinkingLevel":"medium","timeoutMs":600000,
+            "thinkingLevel":row.get::<Value,_>("input").get("thinking_level").and_then(Value::as_str).unwrap_or("medium"),"timeoutMs":600000,
             "resumeApproval":resume_approval
         }),
     }))
@@ -1366,10 +1409,13 @@ async fn dispatch_tool(
         | "db.inspect_resource"
         | "db.query_resource"
         | "db.get_provenance" => {
-            let project_id = context
-                .project_id
-                .ok_or_else(|| ApiError::invalid("this tool requires a Project"))?;
-            super::data_plane::execute_db_tool(state, project_id, name, arguments).await
+            if let Some(project_id) = context.project_id {
+                super::data_plane::execute_db_tool(state, project_id, name, arguments).await
+            } else if name == "db.discover_resources" {
+                super::data_plane::execute_public_db_discovery(state, arguments).await
+            } else {
+                Err(ApiError::invalid("this tool requires a Project"))
+            }
         }
         "project.list_files" => {
             let project_id = context
@@ -1719,8 +1765,11 @@ fn allowed_tools(
     TOOLS
         .iter()
         .filter(|definition| {
-            let scope_allows =
-                has_project || matches!(definition.name, "skill.load" | "analysis.validate");
+            let scope_allows = has_project
+                || matches!(
+                    definition.name,
+                    "skill.load" | "analysis.validate" | "db.discover_resources"
+                );
             let role_allows = definition.risk == "read"
                 || user_role == "admin"
                 || matches!(project_role, "owner" | "admin" | "editor");
@@ -2468,12 +2517,12 @@ mod tests {
     }
 
     #[test]
-    fn resource_discovery_requires_an_authorized_project_scope() {
+    fn public_resource_discovery_does_not_require_a_project_scope() {
         let definition = TOOLS
             .iter()
             .find(|definition| definition.name == "db.discover_resources")
             .expect("registered discovery tool");
-        assert!(definition.project_required);
+        assert!(!definition.project_required);
     }
 
     #[test]

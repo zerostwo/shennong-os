@@ -6,6 +6,11 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ### Added
 
+- Add first-class chat model and reasoning controls, visible reasoning summaries,
+  assistant-ui attachments, `@` mentions, `/` commands, and structured
+  clarification choices with a free-form fallback.
+- Add a reviewed `run-reproducible-r-analysis` Skill for bounded R and ggplot2
+  jobs in the governed Project Runtime.
 - Publish the WebUI, control-plane server, and Agent Runtime images to Docker
   Hub from `main`, version tags, and manual GitHub Actions runs.
 - Add a dedicated `llama-cpp` provider kind for the loopback Bonsai reasoning
@@ -21,6 +26,11 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ### Changed
 
+- Enable public Shennong DB discovery by default for new personal chats and
+  enable both data discovery and reproducible R execution for new Project
+  chats, while preserving Project RBAC and Runtime approval requirements.
+- Improve assistant message typography, Markdown tables and code blocks, empty
+  state actions, composer density, and remove the redundant Agent avatar.
 - Default the unified Compose deployment to public Docker Hub application
   images and built-in data/secret paths, reducing the required `.env` surface
   without weakening the Runtime isolation model.

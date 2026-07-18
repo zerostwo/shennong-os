@@ -12,7 +12,7 @@ const skillsRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../sk
 
 test("all built-in V1 Skills pass schema, lint, permission, and digest checks", async () => {
   const results = await validateSkillsRoot(skillsRoot);
-  assert.equal(results.length, 7);
+  assert.equal(results.length, 8);
   assert.deepEqual(
     results.filter(({ valid }) => !valid).map(({ directory, findings }) => ({ directory, findings })),
     [],

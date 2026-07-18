@@ -16,6 +16,26 @@ use serde_json::{Value, json};
 use sqlx::Row;
 use uuid::Uuid;
 
+pub(crate) async fn enable_default_thread_skills(
+    state: &AppState,
+    thread_id: Uuid,
+    has_project: bool,
+) -> Result<(), ApiError> {
+    sqlx::query(
+        "INSERT INTO thread_skills(thread_id,skill_id,skill_version,enabled) \
+         SELECT $1,id,current_version,TRUE FROM skills \
+         WHERE lifecycle='active' AND owner_user_id IS NULL \
+           AND (slug='discover-shennong-data' OR ($2 AND slug='run-reproducible-r-analysis')) \
+         ON CONFLICT(thread_id,skill_id) DO NOTHING",
+    )
+    .bind(thread_id)
+    .bind(has_project)
+    .execute(&state.pool)
+    .await
+    .map_err(ApiError::database)?;
+    Ok(())
+}
+
 #[derive(Deserialize)]
 pub struct ContextQuery {
     project_id: Option<Uuid>,

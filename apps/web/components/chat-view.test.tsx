@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChatView } from "./chat-view";
 
-const mocks = vi.hoisted(() => ({ runtimeProvider: vi.fn() }));
+const mocks = vi.hoisted(() => ({ runtimeProvider: vi.fn(), setProviderId: vi.fn(), setThinkingLevel: vi.fn() }));
 
 vi.mock("@/components/app-shell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -13,6 +13,13 @@ vi.mock("@/components/assistant-ui/runtime-provider", () => ({
     mocks.runtimeProvider(props);
     return <div data-testid="runtime-provider">{props.children}</div>;
   },
+  useShennongAssistantRuntime: () => ({
+    providers: [{ id: "provider-1", name: "Local", model: "qwen", enabled: true }],
+    providerId: "provider-1",
+    setProviderId: mocks.setProviderId,
+    thinkingLevel: "medium",
+    setThinkingLevel: mocks.setThinkingLevel,
+  }),
 }));
 vi.mock("@/components/assistant-ui/thread", () => ({ ShennongThread: () => <div>Assistant thread</div>, ThreadSkillSelector: () => <button>Skills</button> }));
 

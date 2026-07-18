@@ -25,6 +25,9 @@ vi.mock("@ag-ui/client", () => ({ HttpAgent: mocks.httpAgent }));
 vi.mock("@assistant-ui/react", () => ({
   AssistantRuntimeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   ExportedMessageRepository: { fromArray: vi.fn(() => ({})) },
+  CompositeAttachmentAdapter: class { constructor(adapters: unknown[]) { void adapters; } },
+  SimpleImageAttachmentAdapter: class {},
+  SimpleTextAttachmentAdapter: class {},
 }));
 vi.mock("@assistant-ui/react-ag-ui", () => ({
   useAgUiRuntime: vi.fn((options: { adapters?: { history?: ThreadHistoryAdapter } }) => {
@@ -44,6 +47,9 @@ vi.mock("@/lib/assistant-runtime", () => ({
   updateOsThread: vi.fn(),
 }));
 vi.mock("@/lib/assistant-run-resume", () => ({ resumeOsRun: mocks.resumeOsRun }));
+vi.mock("@/lib/api/adapter", () => ({
+  listAiProviders: vi.fn(async () => [{ id: "provider-1", name: "Local", model: "qwen", enabled: true, isDefault: true }]),
+}));
 
 describe("ShennongRuntimeProvider Project transport", () => {
   beforeEach(() => {
@@ -62,11 +68,17 @@ describe("ShennongRuntimeProvider Project transport", () => {
       </ShennongRuntimeProvider>,
     );
 
-    await waitFor(() => expect(mocks.httpAgent).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.httpAgent).toHaveBeenCalledWith(expect.objectContaining({
+      headers: expect.objectContaining({ "x-shennong-provider-id": "provider-1" }),
+    })));
     expect(mocks.httpAgent).toHaveBeenCalledWith(expect.objectContaining({
       url: "/api/agent",
       threadId: "thread-1",
-      headers: expect.objectContaining({ "x-shennong-project-id": "project-1" }),
+      headers: expect.objectContaining({
+        "x-shennong-project-id": "project-1",
+        "x-shennong-provider-id": "provider-1",
+        "x-shennong-thinking-level": "medium",
+      }),
     }));
   });
 
@@ -83,6 +95,7 @@ describe("ShennongRuntimeProvider Project transport", () => {
     expect(await history?.load()).toMatchObject({ unstable_resume: true });
 
     const controller = new AbortController();
+    const agentCallsBeforeResume = mocks.httpAgent.mock.calls.length;
     const updates = [];
     for await (const update of history!.resume!({ abortSignal: controller.signal } as never)) {
       updates.push(update);
@@ -93,7 +106,7 @@ describe("ShennongRuntimeProvider Project transport", () => {
       runId: "00000000-0000-4000-8000-000000000042",
       abortSignal: controller.signal,
     }));
-    expect(mocks.httpAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.httpAgent).toHaveBeenCalledTimes(agentCallsBeforeResume);
   });
 
   it("persists optimistic user history but leaves assistant interrupt output OS-authoritative", async () => {
