@@ -13,8 +13,6 @@ The format is based on [Keep a Changelog 1.1.0], and this project adheres to
   server, Agent Runtime, gateway, and OS PostgreSQL service.
 - Add a three-container Compose deployment that auto-initializes shared service
   credentials and needs only the OS, DB, and Runtime images.
-- Publish the WebUI, control-plane server, and Agent Runtime images to Docker
-  Hub from `main`, version tags, and manual GitHub Actions runs.
 - Add a repository-specific `AGENTS.md` and a local CodeGraph bootstrap rule for
   code-aware maintenance without committing generated index data.
 
