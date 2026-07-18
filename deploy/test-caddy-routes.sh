@@ -4,8 +4,12 @@ set -Eeuo pipefail
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 readonly script_dir
 readonly caddyfile="$script_dir/Caddyfile"
-readonly env_example="$script_dir/.env.example"
-caddy_image="${SHENNONG_CADDY_IMAGE:-$(sed -n 's/^SHENNONG_CADDY_IMAGE=//p' "$env_example")}"
+readonly compose_file="$script_dir/compose.yaml"
+caddy_image="${SHENNONG_CADDY_IMAGE:-$(awk '
+  $0 == "  gateway:" { in_gateway = 1; next }
+  in_gateway && $0 ~ /^  [[:alnum:]_-]+:$/ { exit }
+  in_gateway && $1 == "image:" { print $2; exit }
+' "$compose_file")}"
 readonly caddy_image
 [[ "$caddy_image" == *@sha256:* ]] || {
   printf 'Caddy route contract requires a digest-pinned image\n' >&2
