@@ -6,14 +6,16 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 ### Added
 
-- Publish the WebUI, control-plane server, and Agent Runtime images to Docker
-  Hub from `main`, version tags, and manual GitHub Actions runs.
+- Publish one `zerostwo/shennong-os` image containing the WebUI, control-plane
+  server, Agent Runtime, gateway, and OS PostgreSQL service.
+- Add a three-container Compose deployment that auto-initializes shared service
+  credentials and needs only the OS, DB, and Runtime images.
 
 ### Changed
 
-- Default the unified Compose deployment to public Docker Hub application
-  images and built-in data/secret paths, reducing the required `.env` surface
-  without weakening the Runtime isolation model.
+- Replace the seven-image unified deployment default with three public images:
+  `zerostwo/shennong-os`, `zerostwo/shennong-db`, and
+  `zerostwo/shennong-runtime`.
 
 ## [1.0.0] - 2026-07-18
 

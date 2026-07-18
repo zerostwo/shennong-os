@@ -1,4 +1,4 @@
-name: Publish Docker images
+name: Publish Docker image
 
 on:
   push:
@@ -18,28 +18,9 @@ concurrency:
 
 jobs:
   publish:
-    name: Publish ${{ matrix.name }}
+    name: Publish Shennong OS
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: WebUI
-            image: zerostwo/shennong-os-web
-            context: apps/web
-            dockerfile: apps/web/Dockerfile
-            description: Shennong OS WebUI
-          - name: Server
-            image: zerostwo/shennong-os-server
-            context: .
-            dockerfile: apps/server/Dockerfile
-            description: Shennong OS control-plane server
-          - name: Agent Runtime
-            image: zerostwo/shennong-os-agent-runtime
-            context: apps/agent-runtime
-            dockerfile: apps/agent-runtime/Dockerfile
-            description: Shennong OS governed agent runtime
+    timeout-minutes: 90
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -50,7 +31,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ matrix.image }}
+          images: zerostwo/shennong-os
           flavor: latest=false
           tags: |
             type=ref,event=branch
@@ -59,8 +40,8 @@ jobs:
             type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
             type=sha,format=long
           labels: |
-            org.opencontainers.image.title=${{ matrix.name }}
-            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.title=Shennong OS
+            org.opencontainers.image.description=Unified WebUI, control plane, agent runtime, and OS database image
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -75,16 +56,16 @@ jobs:
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
+          context: .
+          file: Dockerfile
           push: true
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          cache-from: type=gha,scope=shennong-os
+          cache-to: type=gha,mode=max,scope=shennong-os
           provenance: true
           sbom: true
 
       - name: Verify published digest
-        run: docker buildx imagetools inspect "${{ matrix.image }}@${{ steps.build.outputs.digest }}"
+        run: docker buildx imagetools inspect "zerostwo/shennong-os@${{ steps.build.outputs.digest }}"

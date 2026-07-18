@@ -1,5 +1,10 @@
 # Unified V1 deployment
 
+> For the new three-container deployment using only `shennong-os`,
+> `shennong-db`, and `shennong-runtime`, start with
+> [SIMPLE.md](SIMPLE.md). The remainder of this document describes the retained
+> hardened rootless profile and its recovery procedures.
+
 This directory deploys the trusted Shennong OS WebUI/control plane, the
 headless Shennong DB data plane, the Agent Runtime, PostgreSQL, the trusted
 Shennong Runtime daemon, and a single Caddy gateway. Untrusted Job and IDE
