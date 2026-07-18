@@ -37,7 +37,6 @@ function ChatControls() {
     </div>
   );
 }
-
 export function ChatView({ threadId, projectId, initialPrompt }: { threadId?: string; projectId?: string; initialPrompt?: string }) {
   return (
     <ShennongRuntimeProvider initialThreadId={threadId} projectId={projectId}>

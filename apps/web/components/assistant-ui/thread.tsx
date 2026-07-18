@@ -288,7 +288,6 @@ function EmptyState({ projectName }: { projectName?: string }) {
     </section>
   );
 }
-
 function ComposerPrefill({ prompt }: { prompt?: string }) {
   const runtime = useAssistantRuntime();
   const applied = useRef("");

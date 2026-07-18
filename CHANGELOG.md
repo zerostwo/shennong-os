@@ -1,6 +1,9 @@
 # Changelog
 
-All notable changes follow Keep a Changelog and Semantic Versioning.
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog 1.1.0], and this project adheres to
+[Semantic Versioning 2.0.0].
 
 ## [Unreleased]
 
@@ -17,6 +20,8 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
   server, Agent Runtime, gateway, and OS PostgreSQL service.
 - Add a three-container Compose deployment that auto-initializes shared service
   credentials and needs only the OS, DB, and Runtime images.
+- Add a repository-specific `AGENTS.md` and a local CodeGraph bootstrap rule for
+  code-aware maintenance without committing generated index data.
 - Add a dedicated `llama-cpp` provider kind for the loopback Bonsai reasoning
   adapter at `host.docker.internal:8081/v1`, including server validation,
   Agent Runtime fetch isolation, OpenAPI, migration, and WebUI settings.
@@ -48,6 +53,12 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 - Replace the seven-image unified deployment default with three public images:
   `zerostwo/shennong-os`, `zerostwo/shennong-db`, and
   `zerostwo/shennong-runtime`.
+- Default the retained hardened deployment to public Docker Hub application
+  images and built-in data/secret paths, reducing the required `.env` surface
+  while preserving its rootless Runtime isolation model.
+- Visualize the system, trust boundaries, and request flow in the README and
+  document implementation mapping, state ownership, cross-repository contracts,
+  and failure semantics in the V1 architecture contract.
 - Unify WebUI shell geometry, page gutters, typography, surface colors, active
   navigation, and primary actions around one restrained scientific teal token
   set while preserving the existing information architecture.
@@ -186,3 +197,5 @@ All notable changes follow Keep a Changelog and Semantic Versioning.
 
 [Unreleased]: https://github.com/zerostwo/shennong-os/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/zerostwo/shennong-os/tree/v1.0.0
+[Keep a Changelog 1.1.0]: https://keepachangelog.com/en/1.1.0/
+[Semantic Versioning 2.0.0]: https://semver.org/spec/v2.0.0.html
