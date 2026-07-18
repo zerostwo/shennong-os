@@ -8,7 +8,7 @@ export type JsonRecord = Record<string, unknown>;
 export type AiProviderRecord = {
   id: string;
   name: string;
-  providerType: "openai" | "deepseek" | "ollama" | "openai-compatible";
+  providerType: "openai" | "deepseek" | "ollama" | "llama-cpp" | "openai-compatible";
   baseUrl: string;
   model: string;
   dataPolicy: "public_only" | "allow_private";
@@ -318,7 +318,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return ("data" in payload ? payload.data : payload) as T;
 }
 
-function text(value: unknown, fallback = "—"): string {
+function text(value: unknown, fallback = "Not available"): string {
   return typeof value === "string" && value.length ? value : fallback;
 }
 
@@ -342,7 +342,7 @@ function recordArray(value: unknown): JsonRecord[] {
   return Array.isArray(value) ? value.map(jsonRecord) : [];
 }
 
-function valueText(value: unknown, fallback = "—"): string {
+function valueText(value: unknown, fallback = "Not available"): string {
   return typeof value === "string" && value.length > 0
     ? value
     : typeof value === "number"
@@ -435,7 +435,7 @@ function toProjectActivity(value: JsonRecord): ProjectActivityRecord {
 
 function toAiProvider(value: JsonRecord): AiProviderRecord {
   const providerTypeValue = valueText(value.provider_kind ?? value.provider_type ?? value.kind ?? value.type, "openai-compatible");
-  const providerType = providerTypeValue === "openai" || providerTypeValue === "deepseek" || providerTypeValue === "ollama"
+  const providerType = providerTypeValue === "openai" || providerTypeValue === "deepseek" || providerTypeValue === "ollama" || providerTypeValue === "llama-cpp"
     ? providerTypeValue
     : "openai-compatible";
   return {
@@ -670,7 +670,7 @@ export async function listRelations(resourceId: string): Promise<unknown[]> {
   return request<unknown[]>(`/resources/${encodeURIComponent(resourceId)}/relations`);
 }
 
-export async function listProviders(): Promise<unknown[]> { return request<unknown[]>("/providers"); }
+export async function listProviders(): Promise<unknown[]> { return request<unknown[]>("/resource-providers"); }
 export async function installProvider(name: string): Promise<unknown> { return request("/resources/install", { method: "POST", body: JSON.stringify({ name }) }); }
 export async function listUsers(): Promise<unknown[]> { return request<unknown[]>("/users"); }
 export async function getUser(id: string): Promise<JsonRecord> { return request(`/users/${encodeURIComponent(id)}`); }
@@ -731,7 +731,13 @@ export async function listRegistrationInvites(): Promise<RegistrationInviteRecor
 }
 
 export async function createRegistrationInvite(value: { email_constraint?: string; max_uses: number; expires_at: string; note?: string }): Promise<{ invite: RegistrationInviteRecord; code: string }> {
-  const result = await request<JsonRecord>("/admin/invites", { method: "POST", body: JSON.stringify(value) });
+  const expiresInSeconds = Math.max(300, Math.round((new Date(value.expires_at).getTime() - Date.now()) / 1000));
+  const result = await request<JsonRecord>("/admin/invites", { method: "POST", body: JSON.stringify({
+    email_constraint: value.email_constraint,
+    max_uses: value.max_uses,
+    expires_in_seconds: expiresInSeconds,
+    note: value.note,
+  }) });
   return { invite: toInvite(jsonRecord(result.invite ?? result)), code: valueText(result.code ?? result.invite_code, "") };
 }
 
@@ -745,6 +751,22 @@ export async function listAiProviders(): Promise<AiProviderRecord[]> {
     ? recordArray(value)
     : recordArray(jsonRecord(value).providers ?? jsonRecord(value).items);
   return rows.map(toAiProvider);
+}
+
+export async function listAdminModelProviders(): Promise<JsonRecord[]> {
+  return request<JsonRecord[]>("/admin/model-providers");
+}
+
+export async function getSystemDependencies(): Promise<JsonRecord> {
+  return request<JsonRecord>("/system/dependencies");
+}
+
+export async function getRegistrationPolicy(): Promise<JsonRecord> {
+  return request<JsonRecord>("/auth/registration-policy");
+}
+
+export async function updateRegistrationPolicy(registrationMode: "disabled" | "invite_only" | "open"): Promise<JsonRecord> {
+  return request<JsonRecord>("/admin/registration-policy", { method: "PATCH", body: JSON.stringify({ registration_mode: registrationMode }) });
 }
 
 export async function createAiProvider(value: {
@@ -1167,6 +1189,10 @@ export async function getSession(): Promise<AuthSession> {
   return normalizeAuthSession(await request<unknown>("/auth/session"));
 }
 
+export async function updateProfile(value: { display_name: string; username: string; avatar_url?: string }): Promise<AuthSession> {
+  return normalizeAuthSession(await request<unknown>("/auth/profile", { method: "PATCH", body: JSON.stringify(value) }));
+}
+
 export async function listGrants(): Promise<JsonRecord[]> { return request("/grants"); }
 export async function createGrant(value: JsonRecord): Promise<JsonRecord> { return request("/grants", { method: "POST", body: JSON.stringify(value) }); }
 export async function deleteGrant(resourceId: string, userId: string): Promise<void> { await request(`/grants/${encodeURIComponent(resourceId)}/${encodeURIComponent(userId)}`, { method: "DELETE" }); }
@@ -1336,7 +1362,7 @@ export async function submitProjectObservations(projectId: string, rows: Observa
   })));
   const created: Array<{ entity: ProjectEntityRecord; row: ObservationDraft; rowIndex: number }> = [];
   entityResults.forEach((result, index) => {
-    if (result.status === "fulfilled" && result.value.id !== "—") {
+    if (result.status === "fulfilled" && result.value.id !== "Not available") {
       created.push({ entity: result.value, row: rows[index], rowIndex: index });
     } else {
       failures.push({
@@ -1446,6 +1472,4 @@ export async function getStorageSummary(): Promise<JsonRecord> { return request(
 export async function listSessions(): Promise<JsonRecord[]> { return request("/auth/sessions"); }
 export async function revokeSession(tokenId: string): Promise<void> { await request(`/auth/sessions/${encodeURIComponent(tokenId)}`, { method: "DELETE" }); }
 export async function listLoginHistory(): Promise<JsonRecord[]> { return request("/auth/login-history"); }
-export async function getProfile(): Promise<JsonRecord> { return request("/auth/profile"); }
-export async function updateProfile(value: JsonRecord): Promise<JsonRecord> { return request("/auth/profile", { method: "PUT", body: JSON.stringify(value) }); }
 export async function changePassword(current_password: string, new_password: string): Promise<void> { await request("/auth/change-password", { method: "POST", body: JSON.stringify({ current_password, new_password }) }); }

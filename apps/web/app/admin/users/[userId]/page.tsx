@@ -1,9 +1,9 @@
-import { redirect } from "next/navigation";
+import { UserDetailView } from "@/components/user-detail-view";
 export default async function Page({
   params,
 }: {
   params: Promise<{ userId: string }>;
 }) {
-  await params;
-  redirect("/admin/invites");
+  const { userId } = await params;
+  return <UserDetailView userId={userId} />;
 }

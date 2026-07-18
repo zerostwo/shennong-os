@@ -5,7 +5,10 @@ COPY apps/server/src ./apps/server/src
 COPY migrations ./migrations
 COPY openapi ./openapi
 WORKDIR /build/apps/server
-RUN cargo build --locked --release && \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/build/apps/server/target,sharing=locked \
+    cargo build --locked --release && \
     cp target/release/shennong-os-server /tmp/shennong-os-server
 
 FROM debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818 AS runtime

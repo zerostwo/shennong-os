@@ -1,25 +1,102 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, FileIcon, UploadCloud } from "lucide-react";
-import { registerProjectUploads, uploadProjectFile, type JsonRecord } from "@/lib/api/adapter";
-import { AppShell, SectionHeader, TopBar } from "./app-shell";
+import { FileIcon, FolderLock, MessageSquare, UploadCloud } from "lucide-react";
+import { buildProjectUploadPrompt, registerProjectFiles } from "@/lib/project-upload";
+import { AppShell, TopBar } from "./app-shell";
+import styles from "./project-ui.module.css";
 
-const steps=["Select files","Describe resource","Access & format","Upload & register"] as const;
-const MAX_UPLOAD_BYTES=50*1024*1024*1024;
-export function UploadView({projectId,returnTo}:{projectId:string;returnTo?:string}){
-  const router=useRouter();const queryClient=useQueryClient();const submitting=useRef(false);const[step,setStep]=useState(0);const[files,setFiles]=useState<File[]>([]);const[values,setValues]=useState<JsonRecord>({resource_id:"",name:"",description:"",organism:"",modality:"",assay:"",reference:"",annotation:"",format:"binary",data_class:"raw",visibility:"private"});const[statuses,setStatuses]=useState<Record<string,string>>({});const[error,setError]=useState("");const[busy,setBusy]=useState(false);const[registered,setRegistered]=useState<JsonRecord|null>(null);
-  function field(key:string,value:string){setValues((old)=>({...old,[key]:value}));}
-  function next(){setError("");if(step===0&&files.length===0){setError("Select at least one real file.");return;}if(step===0&&files.some((file)=>file.size===0||file.size>MAX_UPLOAD_BYTES)){setError("Every file must be non-empty and no larger than 50 GiB.");return;}if(step===1&&(!String(values.resource_id).trim()||!String(values.name).trim())){setError("Resource ID and name are required.");return;}setStep((value)=>Math.min(3,value+1));}
-  async function submit(event:FormEvent){event.preventDefault();if(submitting.current)return;submitting.current=true;setBusy(true);setError("");setRegistered(null);const uploads:JsonRecord[]=[];try{for(const file of files){setStatuses((old)=>({...old,[file.name]:"uploading"}));const upload=await uploadProjectFile(projectId,file);uploads.push(upload);setStatuses((old)=>({...old,[file.name]:"uploaded"}));}const payload={...values,visibility:"private",upload_ids:uploads.map((row)=>String(row.id))};const resource=await registerProjectUploads(projectId,payload);await Promise.all([queryClient.invalidateQueries({queryKey:["projects",projectId,"context-pack"]}),queryClient.invalidateQueries({queryKey:["projects",projectId,"resources"]})]);setRegistered(resource);setStatuses((old)=>Object.fromEntries(Object.keys(old).map((key)=>[key,"registered"])));}catch(reason){setError(reason instanceof Error?reason.message:"Upload failed");}finally{submitting.current=false;setBusy(false);}}
-  return <AppShell active="projects"><TopBar title="Upload experimental data" description={`Register immutable files inside project ${projectId}.`} search={false}/><div className="upload-page"><div className="project-binding-notice"><strong>Project boundary</strong><code>{projectId}</code><span>The server derives actor and Project identity from your authenticated session; uploaded Resources remain private to this Project.</span></div><div className="upload-stepper">{steps.map((label,index)=><button type="button" key={label} className={index===step?"active":index<step?"complete":""} onClick={()=>index<=step&&setStep(index)}><span>{index<step?<Check/>:index+1}</span>{label}</button>)}</div><form className="upload-card" onSubmit={submit}><SectionHeader title={steps[step]} description={`Step ${step+1} of ${steps.length}`}/>{error&&<div className="form-error-summary" role="alert">{error}</div>}
-  {step===0&&<><label className="dropzone"><UploadCloud/><strong>Choose files to upload</strong><span>Files are streamed to the configured ShennongDB object store.</span><input type="file" multiple hidden onChange={(event)=>setFiles(Array.from(event.target.files??[]))}/></label>{files.map((file)=><div className="settings-row" key={`${file.name}-${file.lastModified}`}><FileIcon/><span><strong>{file.name}</strong><small>{formatBytes(file.size)} · {file.type||"application/octet-stream"}</small></span><button type="button" className="text-button" onClick={()=>setFiles((old)=>old.filter((item)=>item!==file))}>Remove</button></div>)}</>}
-  {step===1&&<div className="form-grid"><Field label="Resource ID"><input required value={String(values.resource_id)} onChange={(e)=>field("resource_id",e.target.value)} pattern="[A-Za-z0-9._-]+"/></Field><Field label="Resource name"><input required value={String(values.name)} onChange={(e)=>field("name",e.target.value)}/></Field><Field label="Description" wide><textarea value={String(values.description)} onChange={(e)=>field("description",e.target.value)}/></Field><Field label="Organism"><input value={String(values.organism)} onChange={(e)=>field("organism",e.target.value)}/></Field><Field label="Modality"><input value={String(values.modality)} onChange={(e)=>field("modality",e.target.value)}/></Field><Field label="Assay"><input value={String(values.assay)} onChange={(e)=>field("assay",e.target.value)}/></Field><Field label="Reference assembly"><input value={String(values.reference)} onChange={(e)=>field("reference",e.target.value)}/></Field><Field label="Annotation release"><input value={String(values.annotation)} onChange={(e)=>field("annotation",e.target.value)}/></Field></div>}
-  {step===2&&<div className="form-grid"><Field label="Artifact format"><input value={String(values.format)} onChange={(e)=>field("format",e.target.value)}/></Field><Field label="Data class"><select value={String(values.data_class)} onChange={(e)=>field("data_class",e.target.value)}><option value="raw">raw</option><option value="canonical">canonical</option><option value="derived">derived</option></select></Field><Field label="Visibility"><input value="Private to this Project" disabled/></Field><div className="review-list form-wide"><div><FileIcon/><span><strong>{String(values.name)}</strong><small>{files.length} file(s) · private · {String(values.data_class)}</small></span></div></div></div>}
-  {step===3&&<div><p>The browser will upload each selected file, verify its SHA-256 checksum server-side, persist the upload record, then atomically create the Resource and Artifacts{projectId?" before binding the Resource to this project":""}.</p>{files.map((file)=><div className="settings-row" key={file.name}><FileIcon/><span><strong>{file.name}</strong><small>{statuses[file.name]??"pending"}</small></span>{statuses[file.name]==="registered"&&<Check/>}</div>)}{registered&&<div className="saved-state" role="status">Resource {String(registered.id)} registered successfully{projectId?` and bound to ${projectId}`:""}.</div>}</div>}
-  <div className="upload-actions"><button type="button" className="outline-button" disabled={step===0||busy} onClick={()=>setStep((value)=>value-1)}>Back</button>{step<3?<button type="button" className="primary-button" onClick={next}>Continue</button>:registered?<button type="button" className="primary-button" onClick={()=>router.push(returnTo??`/projects/${encodeURIComponent(projectId)}`)}>Return to project</button>:<button className="primary-button" disabled={busy}>{busy?"Uploading…":"Upload and register"}</button>}</div></form></div></AppShell>;
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024 * 1024;
+
+export function UploadView({ projectId }: { projectId: string }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const submitting = useRef(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [background, setBackground] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function selectFiles(selected: File[]) {
+    setError("");
+    if (selected.length > 20) {
+      setFiles([]);
+      setError("Upload no more than 20 related files at once.");
+      return;
+    }
+    const invalid = selected.find((file) => file.size === 0 || file.size > MAX_UPLOAD_BYTES);
+    if (invalid) {
+      setFiles([]);
+      setError(`${invalid.name} must be non-empty and no larger than 50 GiB.`);
+      return;
+    }
+    setFiles(selected);
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (submitting.current) return;
+    if (!files.length) {
+      setError("Select at least one file.");
+      return;
+    }
+    submitting.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await registerProjectFiles(projectId, files, background);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects", projectId, "context-pack"] }),
+        queryClient.invalidateQueries({ queryKey: ["projects", projectId, "resources"] }),
+      ]);
+      const prompt = buildProjectUploadPrompt(result, background);
+      router.push(`/projects/${encodeURIComponent(projectId)}/chat?handoff=${encodeURIComponent(prompt)}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Upload failed");
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  }
+
+  return (
+    <AppShell active="projects">
+      <TopBar title="Add data with the Agent" description="Upload files now, then let the Agent inspect and organize them in Project chat." search={false} />
+      <main className={styles.uploadLayout}>
+        <div className={styles.uploadIntro}>
+          <h1>Add experimental files</h1>
+          <p>You only need to choose the files and share any useful background. Shennong registers a private, immutable Project resource before the Agent sees its durable reference.</p>
+        </div>
+        <form className={styles.uploadForm} onSubmit={submit}>
+          {error ? <div className="form-error-summary" role="alert">{error}</div> : null}
+          <label className={styles.dropzone}>
+            <UploadCloud />
+            <span><strong>{files.length ? "Choose different files" : "Choose files"}</strong><small>One or more files, up to 50 GiB each</small></span>
+            <input type="file" multiple hidden onChange={(event) => selectFiles(Array.from(event.target.files ?? []))} />
+          </label>
+          {files.length ? <div className={styles.fileList}>{files.map((file) => <div className={styles.fileRow} key={`${file.name}-${file.lastModified}`}><FileIcon /><span>{file.name}</span><small>{formatBytes(file.size)}</small></div>)}</div> : null}
+          <label className={styles.backgroundField}>
+            Optional background
+            <textarea value={background} maxLength={4000} onChange={(event) => setBackground(event.target.value)} placeholder="For example: paired tumor and normal RNA-seq from 12 patients, hg38, stranded library." />
+          </label>
+          <div className={styles.privacyNote}><FolderLock /><span>Files stay private to this Project. Actor, owner, visibility, and Project identity are enforced by the server.</span></div>
+          <div className={styles.uploadActions}>
+            <Link className="outline-button" href={`/projects/${encodeURIComponent(projectId)}`}>Cancel</Link>
+            <button className="primary-button" disabled={busy}><MessageSquare />{busy ? "Uploading and registering…" : "Continue in Project chat"}</button>
+          </div>
+        </form>
+      </main>
+    </AppShell>
+  );
 }
-function Field({label,wide,children}:{label:string;wide?:boolean;children:React.ReactNode}){return <label className={wide?"form-wide":""}>{label}{children}</label>}
-function formatBytes(value:number){const units=["B","KB","MB","GB","TB"];let size=value,index=0;while(size>=1024&&index<units.length-1){size/=1024;index+=1}return `${size.toFixed(size>=10?1:2)} ${units[index]}`}
+
+function formatBytes(value: number) {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = value;
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) { size /= 1024; index += 1; }
+  return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[index]}`;
+}

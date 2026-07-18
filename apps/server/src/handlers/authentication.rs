@@ -39,6 +39,13 @@ pub struct SignInRequest {
 }
 
 #[derive(Deserialize)]
+pub struct ProfileWrite {
+    display_name: String,
+    username: String,
+    avatar_url: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct InviteCreate {
     email_constraint: Option<String>,
     max_uses: Option<i32>,
@@ -164,8 +171,9 @@ pub async fn setup_admin(
         tx.rollback().await.map_err(ApiError::database)?;
         return Err(ApiError::conflict("instance is already configured"));
     }
-    sqlx::query("INSERT INTO users(id,email,email_normalized,display_name,password_hash,role,status) VALUES($1,$2,$3,$4,$5,'admin','active')")
-        .bind(user_id).bind(&email).bind(&email).bind(&display_name).bind(password_hash)
+    let username = generated_username(user_id);
+    sqlx::query("INSERT INTO users(id,email,email_normalized,display_name,username,password_hash,role,status) VALUES($1,$2,$3,$4,$5,$6,'admin','active')")
+        .bind(user_id).bind(&email).bind(&email).bind(&display_name).bind(&username).bind(password_hash)
         .execute(&mut *tx).await.map_err(ApiError::database)?;
     audit_tx(
         &mut tx,
@@ -183,7 +191,7 @@ pub async fn setup_admin(
     session_response(
         &state,
         StatusCode::CREATED,
-        json!({"id":user_id,"email":email,"display_name":display_name,"role":"admin","csrf_token":session.csrf}),
+        json!({"id":user_id,"email":email,"display_name":display_name,"username":username,"avatar_url":Value::Null,"role":"admin","csrf_token":session.csrf}),
         &session,
     )
 }
@@ -250,8 +258,9 @@ pub async fn register(
     } else {
         None
     };
-    let inserted = sqlx::query("INSERT INTO users(id,email,email_normalized,display_name,password_hash,role,status) VALUES($1,$2,$3,$4,$5,'user','active')")
-        .bind(user_id).bind(&email).bind(&email).bind(&display_name).bind(password_hash).execute(&mut *tx).await;
+    let username = generated_username(user_id);
+    let inserted = sqlx::query("INSERT INTO users(id,email,email_normalized,display_name,username,password_hash,role,status) VALUES($1,$2,$3,$4,$5,$6,'user','active')")
+        .bind(user_id).bind(&email).bind(&email).bind(&display_name).bind(&username).bind(password_hash).execute(&mut *tx).await;
     if let Err(error) = inserted {
         let duplicate = error
             .as_database_error()
@@ -292,7 +301,7 @@ pub async fn register(
     session_response(
         &state,
         StatusCode::CREATED,
-        json!({"id":user_id,"email":email,"display_name":display_name,"role":"user","csrf_token":session.csrf}),
+        json!({"id":user_id,"email":email,"display_name":display_name,"username":username,"avatar_url":Value::Null,"role":"user","csrf_token":session.csrf}),
         &session,
     )
 }
@@ -309,7 +318,7 @@ pub async fn sign_in(
     if value.password.len() > 1024 {
         return Err(invalid_credentials());
     }
-    let row = sqlx::query("SELECT id,email,display_name,role,status,password_hash FROM users WHERE email_normalized=$1")
+    let row = sqlx::query("SELECT id,email,display_name,username,avatar_url,role,status,password_hash FROM users WHERE email_normalized=$1")
         .bind(&email).fetch_optional(&state.pool).await.map_err(ApiError::database)?;
     let encoded = row.as_ref().map(|row| row.get::<String,_>("password_hash"))
         .unwrap_or_else(|| "$argon2id$v=19$m=19456,t=2,p=1$MDEyMzQ1Njc4OWFiY2RlZg$qy9jBN9aUkHNvRijRT88Yn2m2QG1d2HfPvYxGfXsJOI".into());
@@ -338,7 +347,7 @@ pub async fn sign_in(
     session_response(
         &state,
         StatusCode::OK,
-        json!({"id":user_id,"email":row.get::<String,_>("email"),"display_name":row.get::<String,_>("display_name"),"role":row.get::<String,_>("role"),"csrf_token":session.csrf}),
+        json!({"id":user_id,"email":row.get::<String,_>("email"),"display_name":row.get::<String,_>("display_name"),"username":row.get::<String,_>("username"),"avatar_url":row.get::<Option<String>,_>("avatar_url"),"role":row.get::<String,_>("role"),"csrf_token":session.csrf}),
         &session,
     )
 }
@@ -375,6 +384,63 @@ pub async fn session(
     let user = authenticate(&state, &headers, false).await?;
     Ok(Json(Envelope {
         data: json!({"authenticated":true,"user":user}),
+    }))
+}
+
+pub async fn update_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(value): Json<ProfileWrite>,
+) -> Result<Json<Envelope<Value>>, ApiError> {
+    let actor = authenticate(&state, &headers, true).await?;
+    let display_name = validate_display_name(&value.display_name)?;
+    let username = validate_username(&value.username)?;
+    let avatar_url = validate_avatar_url(value.avatar_url)?;
+    let updated = sqlx::query(
+        "UPDATE users SET display_name=$2,username=$3,avatar_url=$4,updated_at=NOW() \
+         WHERE id=$1 RETURNING email,role",
+    )
+    .bind(actor.id)
+    .bind(&display_name)
+    .bind(&username)
+    .bind(&avatar_url)
+    .fetch_one(&state.pool)
+    .await;
+    let row = match updated {
+        Ok(row) => row,
+        Err(error)
+            if error
+                .as_database_error()
+                .and_then(|value| value.code())
+                .as_deref()
+                == Some("23505") =>
+        {
+            return Err(ApiError::conflict("username is already in use"));
+        }
+        Err(error) => return Err(ApiError::database(error)),
+    };
+    audit(
+        &state,
+        Some(&actor),
+        None,
+        "auth.profile_updated",
+        "user",
+        Some(actor.id.to_string()),
+        json!({"username":username,"avatar_updated":avatar_url.is_some()}),
+    )
+    .await?;
+    Ok(Json(Envelope {
+        data: json!({
+            "authenticated":true,
+            "user":{
+                "id":actor.id,
+                "email":row.get::<String,_>("email"),
+                "display_name":display_name,
+                "username":username,
+                "avatar_url":avatar_url,
+                "role":row.get::<String,_>("role")
+            }
+        }),
     }))
 }
 
@@ -555,6 +621,45 @@ fn validate_display_name(value: &str) -> Result<String, ApiError> {
         return Err(ApiError::invalid("display name must be 1..128 characters"));
     }
     Ok(value.to_owned())
+}
+
+fn generated_username(id: Uuid) -> String {
+    format!("user-{}", id.simple())[..32].to_owned()
+}
+
+fn validate_username(value: &str) -> Result<String, ApiError> {
+    let value = value.trim().to_ascii_lowercase();
+    let valid = (3..=32).contains(&value.len())
+        && value.bytes().enumerate().all(|(index, byte)| {
+            byte.is_ascii_lowercase()
+                || byte.is_ascii_digit()
+                || (index > 0 && matches!(byte, b'.' | b'_' | b'-'))
+        });
+    if !valid {
+        return Err(ApiError::invalid(
+            "username must be 3..32 lowercase letters, numbers, dots, underscores, or hyphens",
+        ));
+    }
+    Ok(value)
+}
+
+fn validate_avatar_url(value: Option<String>) -> Result<Option<String>, ApiError> {
+    let value = value
+        .map(|item| item.trim().to_owned())
+        .filter(|item| !item.is_empty());
+    if let Some(value) = value.as_deref() {
+        if value.len() > 700_000
+            || !(value.starts_with("data:image/png;base64,")
+                || value.starts_with("data:image/jpeg;base64,")
+                || value.starts_with("data:image/webp;base64,")
+                || value.starts_with("https://"))
+        {
+            return Err(ApiError::invalid(
+                "avatar must be a PNG, JPEG, or WebP image under 500 KB",
+            ));
+        }
+    }
+    Ok(value)
 }
 
 fn invite_error() -> ApiError {

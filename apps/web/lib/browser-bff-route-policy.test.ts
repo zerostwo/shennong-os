@@ -5,6 +5,7 @@ import { isBrowserRouteAllowed } from "./browser-bff-route-policy";
 describe("Shennong OS browser BFF route policy", () => {
   it.each([
     ["GET", "auth/registration-policy"],
+    ["PATCH", "auth/profile"],
     ["POST", "setup/admin"],
     ["GET", "projects/project-1/members"],
     ["PUT", "projects/project-1/members/user-1"],
@@ -22,6 +23,12 @@ describe("Shennong OS browser BFF route policy", () => {
     ["PUT", "threads/thread-1/skills/skill-1"],
     ["GET", "threads/thread-1/skills"],
     ["POST", "skills/skill-1/versions"],
+    ["GET", "resource-providers"],
+    ["GET", "admin/overview"],
+    ["GET", "admin/model-providers"],
+    ["GET", "users"],
+    ["PUT", "users/user-1"],
+    ["POST", "resources/install"],
     ["GET", "resources/resource-1/graph-context"],
     ["POST", "query"],
   ])("allows browser route %s /api/v1/%s", (method, path) => {
@@ -39,7 +46,6 @@ describe("Shennong OS browser BFF route policy", () => {
     ["GET", "v1/sessions/session-1/proxy"],
     ["POST", "uploads"],
     ["POST", "projects/project-1/uploads/upload-1"],
-    ["GET", "users"],
     ["GET", "auth/tokens"],
     ["GET", "projects/project-1/unknown"],
     ["POST", "projects/project-1/graph/subgraph"],

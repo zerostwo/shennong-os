@@ -47,4 +47,13 @@ describe("SettingsDialog V1 model contract", () => {
       api_key: "test-key",
     })));
   });
+
+  it("keeps Skills outside Settings and exposes the requested preference sections", () => {
+    render(<SettingsDialog open onOpenChange={vi.fn()} session={{ authenticated: true, user_id: "user-1", role: "user" }} />);
+    expect(screen.getByRole("button", { name: "Account" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Personalization" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Keyboard" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Skills" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Settings" })).toHaveClass("sr-only");
+  });
 });

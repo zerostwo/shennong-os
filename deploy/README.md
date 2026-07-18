@@ -66,6 +66,14 @@ enable the socket. It binds only the Shennong control bridge gateway
 `host.docker.internal` only inside Agent Runtime; no Ollama port is published
 on the LAN and no untrusted Job or IDE network can reach the control bridge.
 
+For the supported local llama.cpp reasoning adapter, install
+`systemd/shennong-llama-cpp-proxy.socket` and
+`systemd/shennong-llama-cpp-proxy.service`, then enable the socket. It exposes
+only `172.30.0.1:8081` to Agent Runtime and proxies to the loopback adapter at
+`127.0.0.1:8081`. Configure the Shennong OS provider as `llama-cpp` with base
+URL `http://host.docker.internal:8081/v1`; the raw llama.cpp server on port
+8080 remains loopback-only.
+
 Copy `.env.example` to `/srv/shennong.one/.env`, set the two public origins and
 the dedicated Runtime account IDs/socket paths, and generate each symmetric
 secret under `/srv/shennong.one/secrets` with at least 32 cryptographically

@@ -2,7 +2,7 @@ use super::audit;
 use super::projects::{require_project_read, require_project_write};
 use crate::{
     AppState,
-    auth::authenticate,
+    auth::{authenticate, require_admin},
     clients::{JsonResponse, UpstreamError},
     crypto::sha256_hex,
     error::ApiError,
@@ -56,6 +56,55 @@ pub struct PublicResourceListQuery {
     limit: Option<i64>,
     offset: Option<i64>,
     cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResourceProviderInstall {
+    name: String,
+}
+
+pub async fn resource_providers(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    require_admin(&state, &headers, false).await?;
+    proxy_json(&state, Method::GET, &["providers"], vec![], None).await
+}
+
+pub async fn install_resource_provider(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(value): Json<ResourceProviderInstall>,
+) -> Result<Response, ApiError> {
+    let actor = require_admin(&state, &headers, true).await?;
+    let name = value.name.trim();
+    if name.is_empty()
+        || name.len() > 128
+        || !name
+            .bytes()
+            .all(|value| value.is_ascii_alphanumeric() || matches!(value, b'-' | b'_'))
+    {
+        return Err(ApiError::invalid("invalid Resource provider name"));
+    }
+    let response = db_request(
+        &state,
+        Method::POST,
+        &["resources", "install"],
+        &[],
+        Some(&json!({"name": name})),
+    )
+    .await?;
+    audit(
+        &state,
+        Some(&actor),
+        None,
+        "resource_provider.install",
+        "resource_provider",
+        Some(name.to_owned()),
+        json!({}),
+    )
+    .await?;
+    json_response(response)
 }
 
 #[derive(Debug, FromRow)]
@@ -550,21 +599,7 @@ pub(crate) async fn execute_db_tool(
                 .ok_or_else(|| ApiError::invalid("resource is required"))?;
             validate_segment(resource)?;
             ensure_project_resource(state, project_id, resource).await?;
-            let mut body = arguments.clone();
-            let object = body
-                .as_object_mut()
-                .ok_or_else(|| ApiError::invalid("query arguments must be an object"))?;
-            object.insert("project_id".into(), json!(project_id));
-            object.insert(
-                "limit".into(),
-                json!(
-                    object
-                        .get("limit")
-                        .and_then(Value::as_i64)
-                        .unwrap_or(100)
-                        .clamp(1, 1000)
-                ),
-            );
+            let body = agent_resource_query_body(project_id, arguments)?;
             db_request(state, Method::POST, &["query"], &[], Some(&body)).await?
         }
         _ => return Err(ApiError::not_found()),
@@ -581,6 +616,40 @@ pub(crate) async fn execute_db_tool(
         ));
     }
     Ok(response.body)
+}
+
+fn agent_resource_query_body(project_id: Uuid, arguments: &Value) -> Result<Value, ApiError> {
+    let object = arguments
+        .as_object()
+        .ok_or_else(|| ApiError::invalid("query arguments must be an object"))?;
+    let resource = object
+        .get("resource")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ApiError::invalid("resource is required"))?;
+    let operation = object
+        .get("operation")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ApiError::invalid("operation is required"))?;
+    let limit = object
+        .get("limit")
+        .and_then(Value::as_i64)
+        .unwrap_or(100)
+        .clamp(1, 1000);
+    let context = object.get("context").cloned().unwrap_or_else(|| json!({}));
+    if !context.is_object() {
+        return Err(ApiError::invalid("context must be an object"));
+    }
+    let mut body = json!({
+        "project_id": project_id,
+        "resource": resource,
+        "operation": operation,
+        "context": context,
+        "options": {"limit": limit}
+    });
+    if let Some(feature) = object.get("feature").and_then(Value::as_str) {
+        body["feature"] = json!({"type": "gene", "name": feature});
+    }
+    Ok(body)
 }
 
 async fn discover_project_resources(
@@ -1327,11 +1396,12 @@ fn map_upstream(error: UpstreamError) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProjectShadow, ProjectSubgraphQuery, PublicResourceListQuery, allowed_project_method,
-        bound_artifact_contract, bounded_agent_resource_limit, db_api_segments,
-        filter_public_resource_list, governed_query_scope, merge_discoverable_resources,
-        project_resource_is_bound, project_subgraph_query, public_resource_query,
-        require_public_resource_response, research_project_segments, validate_upload_headers,
+        ProjectShadow, ProjectSubgraphQuery, PublicResourceListQuery, agent_resource_query_body,
+        allowed_project_method, bound_artifact_contract, bounded_agent_resource_limit,
+        db_api_segments, filter_public_resource_list, governed_query_scope,
+        merge_discoverable_resources, project_resource_is_bound, project_subgraph_query,
+        public_resource_query, require_public_resource_response, research_project_segments,
+        validate_upload_headers,
     };
     use crate::clients::JsonResponse;
     use axum::http::{
@@ -1647,6 +1717,51 @@ mod tests {
             project_id,
             "resource-1"
         ));
+    }
+
+    #[test]
+    fn agent_query_is_adapted_to_shennong_db_resource_query_contract() {
+        let project_id = Uuid::from_u128(11);
+        let body = agent_resource_query_body(
+            project_id,
+            &json!({
+                "resource": "pbmc-3k",
+                "operation": "expression",
+                "feature": "CD3D",
+                "context": {},
+                "limit": 10
+            }),
+        )
+        .expect("valid agent query");
+        assert_eq!(
+            body,
+            json!({
+                "project_id": project_id,
+                "resource": "pbmc-3k",
+                "operation": "expression",
+                "feature": {"type": "gene", "name": "CD3D"},
+                "context": {},
+                "options": {"limit": 10}
+            })
+        );
+    }
+
+    #[test]
+    fn agent_query_defaults_and_bounds_limit() {
+        let project_id = Uuid::from_u128(11);
+        let defaulted = agent_resource_query_body(
+            project_id,
+            &json!({"resource":"pbmc-3k","operation":"expression"}),
+        )
+        .expect("defaulted query");
+        assert_eq!(defaulted["options"]["limit"], 100);
+
+        let bounded = agent_resource_query_body(
+            project_id,
+            &json!({"resource":"pbmc-3k","operation":"expression","limit":10000}),
+        )
+        .expect("bounded query");
+        assert_eq!(bounded["options"]["limit"], 1000);
     }
 
     #[test]

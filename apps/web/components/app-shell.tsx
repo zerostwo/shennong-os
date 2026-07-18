@@ -1,17 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ArrowLeft,
   Beaker,
+  Bot,
   Boxes,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
+  BookOpen,
   Database,
   FolderKanban,
   KeyRound,
@@ -26,6 +29,7 @@ import {
   Plus,
   Puzzle,
   Search,
+  Server,
   Settings,
   ShieldCheck,
   SquarePen,
@@ -45,6 +49,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { SettingsDialog } from "@/components/settings-dialog";
 import { settingsHash, settingsSectionFromHash, type SettingsSection } from "@/lib/settings-route";
 import { ShennongThreadList } from "@/components/assistant-ui/thread-list";
+import { ProfileDialog } from "@/components/profile-dialog";
+import type { AuthSession } from "@/lib/auth-session";
 
 type ShellProps = {
   active: string;
@@ -53,21 +59,30 @@ type ShellProps = {
   children: React.ReactNode;
 };
 
-type SessionRecord = {
-  authenticated: boolean;
-  user_id: string;
-  role: string;
-};
+type SessionRecord = AuthSession;
 
-const adminItems = [
-  ["Invitations", "/admin/invites", TicketCheck],
-  ["Audit events", "/admin/audit", Activity],
+const adminGroups = [
+  { label: "OPERATIONS", items: [
+    ["Overview", "/admin/dashboard", LayoutDashboard],
+    ["Users", "/admin/users", UserRound],
+    ["Invitations", "/admin/invites", TicketCheck],
+  ] },
+  { label: "INFRASTRUCTURE", items: [
+    ["Model providers", "/admin/models", Bot],
+    ["Resource providers", "/admin/providers", Database],
+    ["System health", "/admin/monitoring", Server],
+  ] },
+  { label: "GOVERNANCE", items: [
+    ["Audit events", "/admin/audit", Activity],
+    ["Registration", "/admin/security", ShieldCheck],
+  ] },
 ] as const;
 
 export function AppShell({ variant = "public", assistantThreads = false, children }: ShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
@@ -96,7 +111,7 @@ export function AppShell({ variant = "public", assistantThreads = false, childre
     document.documentElement.dataset.density = savedDensity === "compact" ? "compact" : "comfortable";
     void getSession()
       .then((value) => setSession(value))
-      .catch(() => setSession({ authenticated: false, user_id: "", role: "" }));
+      .catch(() => setSession({ authenticated: false, user_id: "", role: "", scopes: [] }));
     void getPublicConfig()
       .then((value) => setRegistrationOpen(value.registration_mode === "open" || value.registration_mode === "invite_only" || value.registration_enabled === true))
       .catch(() => setRegistrationOpen(false));
@@ -126,15 +141,18 @@ export function AppShell({ variant = "public", assistantThreads = false, childre
     };
     const openSettings = (event: Event) => {
       const value = (event as CustomEvent<string>).detail;
-      openSettingsRoute(value === "models" || value === "skills" || value === "memory" ? value : "general");
+      openSettingsRoute(value === "models" || value === "memory" || value === "account" || value === "personalization" || value === "keyboard" ? value : "general");
     };
+    const openProfile = () => { changeSettingsOpen(false); setEditProfileOpen(true); };
     window.addEventListener("keydown", shortcut);
     window.addEventListener("shennong:open-settings", openSettings);
+    window.addEventListener("shennong:open-profile", openProfile);
     return () => {
       window.removeEventListener("keydown", shortcut);
       window.removeEventListener("shennong:open-settings", openSettings);
+      window.removeEventListener("shennong:open-profile", openProfile);
     };
-  }, [openSettingsRoute]);
+  }, [changeSettingsOpen, openSettingsRoute]);
 
   useEffect(() => { setMobileOpen(false); setProfileOpen(false); }, [pathname]);
 
@@ -144,17 +162,18 @@ export function AppShell({ variant = "public", assistantThreads = false, childre
       {mobileOpen ? <button className="sidebar-mobile-scrim" onClick={() => setMobileOpen(false)} aria-label="Close navigation" /> : null}
       <aside className={`sidebar shennong-sidebar ${mobileOpen ? "sidebar-open" : ""}`}>
         <div className="sidebar-topbar">
-          <Link href={isAdmin ? "/admin/invites" : "/"} className="brand" aria-label="Shennong home"><span className="brand-symbol"><Beaker /></span><span>Shennong</span></Link>
+          <Link href={isAdmin ? "/admin/dashboard" : "/"} className="brand" aria-label="Shennong home"><span className="brand-symbol"><Beaker /></span><span>Shennong</span></Link>
           <button className="icon-button collapse-button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}>{collapsed ? <ChevronRight /> : <ChevronLeft />}</button>
           <button className="icon-button sidebar-close" onClick={() => setMobileOpen(false)} aria-label="Close navigation"><X /></button>
         </div>
         {isAdmin ? <AdminNav pathname={pathname} /> : <PublicNav pathname={pathname} authenticated={Boolean(session?.authenticated)} assistantThreads={assistantThreads} openSearch={() => setSearchOpen(true)} />}
         <div className="sidebar-spacer" />
-        {isAdmin ? <AdminFooter session={session} /> : <PublicFooter session={session} registrationOpen={registrationOpen} profileOpen={profileOpen} onProfile={() => setProfileOpen((value) => !value)} openSettings={(section) => { openSettingsRoute(section); setProfileOpen(false); }} />}
+        {isAdmin ? <AdminFooter session={session} /> : <PublicFooter session={session} registrationOpen={registrationOpen} profileOpen={profileOpen} onProfile={() => setProfileOpen((value) => !value)} openProfile={() => { setProfileOpen(false); setEditProfileOpen(true); }} openSettings={(section) => { openSettingsRoute(section); setProfileOpen(false); }} />}
       </aside>
       <main className="main-column">{children}</main>
       <WorkspaceSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
       <SettingsDialog open={settingsOpen} onOpenChange={changeSettingsOpen} onSectionChange={(section) => openSettingsRoute(section, "replace")} session={session} initialSection={settingsSection} />
+      <ProfileDialog open={editProfileOpen} onOpenChange={setEditProfileOpen} session={session} onSaved={setSession} />
     </div>
   );
 }
@@ -166,7 +185,8 @@ function PublicNav({ pathname, authenticated, assistantThreads, openSearch }: { 
       <button className="nav-item sidebar-command" onClick={openSearch}><Search /><span>Search</span><kbd>⌘K</kbd></button>
       <NavItem label="Resources" href="/resources" icon={Database} active={pathname === "/resources" || pathname.startsWith("/resources/") || pathname.startsWith("/catalog")} />
       {authenticated ? <NavItem label="Projects" href="/projects" icon={FolderKanban} active={pathname.startsWith("/projects")} /> : null}
-      {authenticated ? <NavItem label="Skills" href="/#settings/Skills" icon={Puzzle} active={false} /> : null}
+      <NavItem label="Plugins" href="/plugins" icon={Puzzle} active={pathname.startsWith("/plugins")} />
+      <NavItem label="Docs" href="/docs" icon={BookOpen} active={pathname.startsWith("/docs")} />
     </nav>
   );
 }
@@ -174,8 +194,7 @@ function PublicNav({ pathname, authenticated, assistantThreads, openSearch }: { 
 function AdminNav({ pathname }: { pathname: string }) {
   return (
     <nav className="sidebar-nav admin-nav" aria-label="Administrator navigation">
-      <div className="nav-label">ADMIN</div>
-      {adminItems.map(([label, href, Icon]) => <NavItem key={label} label={label} href={href} icon={Icon} active={pathname === href || pathname.startsWith(`${href}/`)} />)}
+      {adminGroups.map((group) => <div className="admin-nav-group" key={group.label}><div className="nav-label">{group.label}</div>{group.items.map(([label, href, Icon]) => <NavItem key={label} label={label} href={href} icon={Icon} active={pathname === href || pathname.startsWith(`${href}/`)} />)}</div>)}
     </nav>
   );
 }
@@ -184,7 +203,7 @@ function NavItem({ label, href, icon: Icon, active }: { label: string; href: str
   return <Link href={href} className={`nav-item ${active ? "active" : ""}`} title={label}><Icon /><span>{label}</span></Link>;
 }
 
-function PublicFooter({ session, registrationOpen, profileOpen, onProfile, openSettings }: { session: SessionRecord | null; registrationOpen: boolean; profileOpen: boolean; onProfile: () => void; openSettings: (section: SettingsSection) => void }) {
+function PublicFooter({ session, registrationOpen, profileOpen, onProfile, openProfile, openSettings }: { session: SessionRecord | null; registrationOpen: boolean; profileOpen: boolean; onProfile: () => void; openProfile: () => void; openSettings: (section: SettingsSection) => void }) {
   if (!session?.authenticated) return (
     <div className="sidebar-footer signed-out-footer">
       <Link className="sidebar-auth-primary" href="/auth/sign-in"><LogIn />Sign in</Link>
@@ -196,22 +215,29 @@ function PublicFooter({ session, registrationOpen, profileOpen, onProfile, openS
       <div className="profile-popover-wrap">
         {profileOpen ? (
           <div className="profile-popover" role="menu">
+            <button onClick={openProfile}><UserRound />Edit profile</button>
             <button onClick={() => openSettings("general")}><Settings />Settings</button>
             <Link href="/console/jobs"><Activity />Analysis jobs</Link>
             <Link href="/console/sessions"><UserRound />Active sessions</Link>
-            {session.role === "admin" ? <Link href="/admin/invites" className="admin-link"><ShieldCheck />Admin center</Link> : null}
+            {session.role === "admin" ? <Link href="/admin/dashboard" className="admin-link"><ShieldCheck />Admin center</Link> : null}
             <Link href="/support"><CircleHelp />Help</Link>
             <button className="danger-menu" onClick={() => void signOut().then(() => location.assign("/"))}><LogOut />Sign out</button>
           </div>
         ) : null}
         <button className="profile-button" onClick={onProfile} aria-expanded={profileOpen}>
-          <span className="avatar avatar-green">{session.user_id.slice(0, 1).toUpperCase()}</span>
-          <span className="profile-copy"><strong>{session.user_id}</strong><small>{session.role}</small></span>
+          <ProfileAvatar session={session} />
+          <span className="profile-copy"><strong>{session.display_name || session.username || session.user_id}</strong><small>{session.username ? `@${session.username}` : session.role}</small></span>
           <ChevronDown />
         </button>
       </div>
     </div>
   );
+}
+
+function ProfileAvatar({ session }: { session: SessionRecord }) {
+  return session.avatar_url
+    ? <span className="avatar avatar-image"><Image src={session.avatar_url} alt="" width={28} height={28} unoptimized /></span>
+    : <span className="avatar avatar-green">{(session.display_name || session.username || session.user_id).slice(0, 1).toUpperCase()}</span>;
 }
 
 function AdminFooter({ session }: { session: SessionRecord | null }) {
@@ -274,12 +300,13 @@ function WorkspaceSearchDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   );
 }
 
-export function TopBar({ title, description, search = true, action }: { title?: string; description?: string; search?: boolean; action?: React.ReactNode }) {
+export function TopBar({ title, description, search: _search = true, action }: { title?: string; description?: string; search?: boolean; action?: React.ReactNode }) {
+  void _search;
+  if (!title && !action) return null;
   return (
     <header className="topbar">
       <div className="topbar-title">{title ? <><h1>{title}</h1>{description ? <p>{description}</p> : null}</> : null}</div>
-      {search ? <button className="global-search" onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}><Search /><span>Search Shennong</span><kbd>⌘ K</kbd></button> : null}
-      <div className="topbar-actions">{action}<Link href="/docs" className="top-link">Docs</Link></div>
+      <div className="topbar-actions">{action}</div>
     </header>
   );
 }

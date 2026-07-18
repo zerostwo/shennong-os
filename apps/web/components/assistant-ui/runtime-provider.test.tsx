@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   httpAgent: vi.fn(function MockHttpAgent(this: { threadId: string }, options: { threadId?: string }) {
     this.threadId = options.threadId ?? "draft-thread";
   }),
+  httpAgentRun: vi.fn(),
   listOsThreads: vi.fn(async () => []),
   persistAssistantMessage: vi.fn(async () => undefined),
   loadOsThread: vi.fn(async () => ({
@@ -18,16 +19,19 @@ const mocks = vi.hoisted(() => ({
   resumeOsRun: vi.fn(async function* () {
     yield { content: [{ type: "text", text: "resumed" }], status: { type: "complete", reason: "unknown" } };
   }),
-  runtimeOptions: null as { adapters?: { history?: ThreadHistoryAdapter } } | null,
+  runtimeOptions: null as { agent?: { runAgent: (parameters: Record<string, unknown>, subscriber: unknown) => unknown }; adapters?: { history?: ThreadHistoryAdapter } } | null,
 }));
 
-vi.mock("@ag-ui/client", () => ({ HttpAgent: mocks.httpAgent }));
+vi.mock("@ag-ui/client", () => {
+  mocks.httpAgent.prototype.runAgent = mocks.httpAgentRun;
+  return { HttpAgent: mocks.httpAgent };
+});
 vi.mock("@assistant-ui/react", () => ({
   AssistantRuntimeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   ExportedMessageRepository: { fromArray: vi.fn(() => ({})) },
 }));
 vi.mock("@assistant-ui/react-ag-ui", () => ({
-  useAgUiRuntime: vi.fn((options: { adapters?: { history?: ThreadHistoryAdapter } }) => {
+  useAgUiRuntime: vi.fn((options: { agent?: { runAgent: (parameters: Record<string, unknown>, subscriber: unknown) => unknown }; adapters?: { history?: ThreadHistoryAdapter } }) => {
     mocks.runtimeOptions = options;
     return {};
   }),
@@ -48,11 +52,26 @@ vi.mock("@/lib/assistant-run-resume", () => ({ resumeOsRun: mocks.resumeOsRun })
 describe("ShennongRuntimeProvider Project transport", () => {
   beforeEach(() => {
     mocks.httpAgent.mockClear();
+    mocks.httpAgentRun.mockClear();
     mocks.listOsThreads.mockClear();
     mocks.loadOsThread.mockClear();
     mocks.persistAssistantMessage.mockClear();
     mocks.resumeOsRun.mockClear();
     mocks.runtimeOptions = null;
+  });
+
+  it("replaces every caller-supplied run id with a UUID", async () => {
+    render(
+      <ShennongRuntimeProvider initialThreadId="thread-1" projectId="project-1">
+        <div>Child</div>
+      </ShennongRuntimeProvider>,
+    );
+    await waitFor(() => expect(mocks.runtimeOptions?.agent).toBeDefined());
+    mocks.runtimeOptions!.agent!.runAgent({ runId: "run-1", threadId: "thread-1" }, {});
+    expect(mocks.httpAgentRun).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i) }),
+      {},
+    );
   });
 
   it("passes the explicit Project id to the AG-UI request headers", async () => {

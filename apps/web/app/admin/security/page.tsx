@@ -1,2 +1,2 @@
-import { redirect } from "next/navigation";
-export default function Page(){redirect("/admin/invites")}
+import { AdminSectionView } from "@/components/admin-section-view";
+export default function Page(){return <AdminSectionView section="security" />}

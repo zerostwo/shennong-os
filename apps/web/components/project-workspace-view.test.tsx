@@ -40,16 +40,17 @@ describe("ProjectWorkspaceView", () => {
   it("renders project sections from one non-truncated context-pack request", async () => {
     mocks.getProjectContextPack.mockResolvedValue(contextPack(false));
     renderWithClient(<ProjectWorkspaceView projectId="project-1" />);
-    expect(await screen.findByRole("heading", { name: "Agent context pack" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Continue your research" })).toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { name: "Tumor atlas" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Study 1")).toBeInTheDocument();
-    expect(screen.getByText("Sample 1")).toBeInTheDocument();
-    expect(screen.getByText("qPCR capture")).toBeInTheDocument();
+    expect(screen.getByText("Sample 1").closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByText("qPCR capture").closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByText("Technical Project details")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/projects/project-1/chat");
     expect(screen.getByRole("link", { name: "Memory" })).toHaveAttribute("href", "/projects/project-1/memory");
-    expect(screen.queryByRole("link", { name: /Upload experimental data/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Chat with Agent" })).toHaveAttribute("href", "/projects/project-1/chat");
     expect(mocks.getProjectContextPack).toHaveBeenCalledTimes(1);
     expect(mocks.listProjectEntities).not.toHaveBeenCalled();
     expect(mocks.listProjectActivities).not.toHaveBeenCalled();

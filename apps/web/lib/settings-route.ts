@@ -1,9 +1,11 @@
-export type SettingsSection = "general" | "models" | "skills" | "memory";
+export type SettingsSection = "account" | "general" | "models" | "personalization" | "keyboard" | "memory";
 
 const routeNames: Record<SettingsSection, string> = {
+  account: "Account",
   general: "General",
   models: "Models",
-  skills: "Skills",
+  personalization: "Personalization",
+  keyboard: "Keyboard",
   memory: "Memory",
 };
 

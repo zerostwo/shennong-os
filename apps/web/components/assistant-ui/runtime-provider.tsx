@@ -19,6 +19,7 @@ import {
   type OsThread,
 } from "@/lib/assistant-runtime";
 import { resumeOsRun } from "@/lib/assistant-run-resume";
+import { randomUuid } from "@/lib/random-uuid";
 
 type RuntimeContextValue = {
   activeThreadId: string;
@@ -28,6 +29,12 @@ type RuntimeContextValue = {
 };
 
 const RuntimeContext = createContext<RuntimeContextValue | null>(null);
+
+class ShennongHttpAgent extends HttpAgent {
+  override runAgent(...[parameters, subscriber]: Parameters<HttpAgent["runAgent"]>) {
+    return super.runAgent({ ...parameters, runId: randomUuid() }, subscriber);
+  }
+}
 
 export function useShennongAssistantRuntime() {
   return useContext(RuntimeContext);
@@ -62,7 +69,7 @@ export function ShennongRuntimeProvider({
   const agent = useMemo(() => {
     // A new unsaved draft needs a fresh AG-UI agent even though it has no thread id yet.
     void draftGeneration;
-    return new HttpAgent({
+    return new ShennongHttpAgent({
       url: "/api/agent",
       threadId: selectedThreadId,
       headers: {

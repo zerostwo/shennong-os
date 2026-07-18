@@ -92,11 +92,16 @@ export class HttpOsInternalClient implements OsInternalClient {
     });
     const payload = await boundedJson(response);
     if (!response.ok) {
-      const code =
-        payload && typeof payload === "object" && "error" in payload
-          ? String((payload as { error: unknown }).error)
-          : `os_callback_${response.status}`;
-      throw new Error(code);
+      const error = payload && typeof payload === "object" && "error" in payload
+        ? (payload as { error: unknown }).error
+        : undefined;
+      if (error && typeof error === "object") {
+        const value = error as { code?: unknown; message?: unknown };
+        const code = typeof value.code === "string" ? value.code : `os_callback_${response.status}`;
+        const message = typeof value.message === "string" ? value.message : "OS rejected the governed tool call.";
+        throw new Error(`${code}: ${message}`);
+      }
+      throw new Error(typeof error === "string" ? error : `os_callback_${response.status}`);
     }
     if (payload && typeof payload === "object" && "data" in payload) {
       return (payload as { data: unknown }).data;

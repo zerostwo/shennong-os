@@ -219,6 +219,25 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CurrentSessionEnvelope' }
         default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/profile:
+    patch:
+      tags: [Authentication]
+      operationId: updateOwnProfile
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfileWrite' }
+      responses:
+        '200':
+          description: Profile updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentSessionEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
   /api/v1/auth/sessions:
     get:
       tags: [Authentication]
@@ -300,6 +319,71 @@ paths:
         - $ref: '#/components/parameters/CsrfToken'
       responses:
         '204': { description: Invitation revoked. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/admin/overview:
+    get:
+      tags: [Administration]
+      operationId: getAdministrationOverview
+      responses:
+        '200':
+          description: Real control-plane counts and recent activity timestamp.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/admin/model-providers:
+    get:
+      tags: [Administration]
+      operationId: listAllModelProviders
+      responses:
+        '200':
+          description: Read-only administrator view of model provider metadata. Secrets are never returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/users:
+    get:
+      tags: [Administration]
+      operationId: listUsers
+      responses:
+        '200':
+          description: Users visible to administrators.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/users/{id}:
+    get:
+      tags: [Administration]
+      operationId: getUser
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: User details visible to administrators.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    put:
+      tags: [Administration]
+      operationId: updateUser
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminUserUpdate' }
+      responses:
+        '200':
+          description: User updated. Disabling a user revokes active sessions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
         default: { $ref: '#/components/responses/Error' }
   /api/v1/projects:
     get:
@@ -530,10 +614,11 @@ paths:
       operationId: listThreads
       parameters:
         - $ref: '#/components/parameters/ProjectIdOptional'
+        - $ref: '#/components/parameters/ThreadScopeOptional'
         - $ref: '#/components/parameters/Limit'
       responses:
         '200':
-          description: Project threads.
+          description: Threads visible to the actor; use scope=personal for non-project chats.
           content:
             application/json:
               schema:
@@ -863,10 +948,11 @@ paths:
       operationId: listRuns
       parameters:
         - $ref: '#/components/parameters/ProjectIdOptional'
+        - $ref: '#/components/parameters/ThreadScopeOptional'
         - $ref: '#/components/parameters/Limit'
       responses:
         '200':
-          description: Project runs.
+          description: Runs visible to the actor; use scope=personal for non-project chats.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ListEnvelope' }
@@ -1242,6 +1328,39 @@ paths:
           content:
             application/json:
               schema: {}
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/resource-providers:
+    get:
+      tags: [Administration]
+      operationId: listResourceProviders
+      description: Lists ShennongDB Resource provider manifests for a Shennong OS administrator without exposing the internal service credential.
+      responses:
+        '200':
+          description: Installable Resource provider manifests.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/resources/install:
+    post:
+      tags: [Administration]
+      operationId: installResourceProvider
+      description: Installs one governed ShennongDB Resource provider. The completed upstream response is returned only after atomic publication.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_-]+$' }
+      responses:
+        '200': { description: Installed and published Resource. }
         default: { $ref: '#/components/responses/Error' }
   /api/v1/resources/{id}:
     get:
@@ -1760,6 +1879,12 @@ components:
       required: false
       description: Omit for actor-private, non-project memory.
       schema: { type: string, format: uuid }
+    ThreadScopeOptional:
+      name: scope
+      in: query
+      required: false
+      description: Use personal to list only actor-owned chats or runs without a Project.
+      schema: { type: string, enum: [personal] }
     Limit:
       name: limit
       in: query
@@ -1960,17 +2085,40 @@ components:
       properties:
         email: { type: string, format: email }
         password: { type: string, format: password }
+    ProfileWrite:
+      type: object
+      required: [display_name, username]
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 128 }
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: '^[a-z0-9][a-z0-9._-]{2,31}$'
+        avatar_url:
+          type: [string, 'null']
+          maxLength: 700000
+          description: HTTPS URL or a PNG, JPEG, or WebP data URL.
+    AdminUserUpdate:
+      type: object
+      properties:
+        display_name: { type: [string, 'null'], minLength: 1, maxLength: 128 }
+        email: { type: [string, 'null'], format: email, maxLength: 320 }
+        role: { type: [string, 'null'], enum: [admin, user, null] }
+        status: { type: [string, 'null'], enum: [active, disabled, null] }
     SessionEnvelope:
       type: object
       required: [data]
       properties:
         data:
           type: object
-          required: [id, email, display_name, role]
+          required: [id, email, display_name, username, role]
           properties:
             id: { type: string, format: uuid }
             email: { type: string, format: email }
             display_name: { type: string }
+            username: { type: string }
+            avatar_url: { type: [string, 'null'] }
             role: { type: string, enum: [admin, user] }
             csrf_token:
               type: string
@@ -1986,11 +2134,13 @@ components:
             authenticated: { type: boolean }
             user:
               type: object
-              required: [id, email, display_name, role]
+              required: [id, email, display_name, username, role]
               properties:
                 id: { type: string, format: uuid }
                 email: { type: string, format: email }
                 display_name: { type: string }
+                username: { type: string }
+                avatar_url: { type: [string, 'null'] }
                 role: { type: string, enum: [admin, user] }
     InviteCreate:
       type: object
@@ -2020,15 +2170,14 @@ components:
         role: { type: string, enum: [owner, admin, editor, viewer] }
     ThreadCreate:
       type: object
-      required: [project_id]
       properties:
-        project_id: { type: string, format: uuid }
+        project_id: { type: [string, 'null'], format: uuid }
         title: { type: [string, 'null'], maxLength: 500 }
         provider_id: { type: [string, 'null'], format: uuid }
         scope:
           type: [string, 'null']
-          enum: [project, null]
-          description: V1 supports project scope only.
+          enum: [personal, project, null]
+          description: Defaults to project when project_id is present, otherwise personal.
     ThreadUpdate:
       type: object
       properties:
@@ -2040,8 +2189,8 @@ components:
       required: [id, project_id, scope, owner_user_id, title, status, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
-        project_id: { type: string, format: uuid }
-        scope: { type: string, const: project }
+        project_id: { type: [string, 'null'], format: uuid }
+        scope: { type: string, enum: [personal, project] }
         owner_user_id: { type: string, format: uuid }
         provider_id: { type: [string, 'null'], format: uuid }
         title: { type: string }
@@ -2176,7 +2325,9 @@ components:
       required: [name, provider_kind, base_url, model]
       properties:
         name: { type: string }
-        provider_kind: { type: string }
+        provider_kind:
+          type: string
+          enum: [openai, deepseek, ollama, llama-cpp, openai-compatible]
         base_url: { type: string, format: uri }
         model: { type: string }
         data_policy: { type: [string, 'null'] }
