@@ -1,0 +1,63 @@
+apiVersion: shennong.one/v1
+kind: AgentSkill
+metadata:
+  id: zerostwo/initialize-biomedical-project
+  name: initialize-biomedical-project
+  version: 1.0.0
+  revision: 1
+  digest: sha256:e52efc09d8761b04d7c9afd0d2ab16c18e0864f4e4239104b30e207d0f2a8fae
+  scope: platform
+  publisher: zerostwo
+  trust: built-in-reviewed
+spec:
+  entrypoint: SKILL.md
+  description: Initialize a governed biomedical project with explicit design, environment, provenance, and validation contracts.
+  lifecycle: active
+  compatibility:
+    os: ">=1.0.0 <2.0.0"
+    runtime: ">=1.0.0 <2.0.0"
+    dbApi: v1
+    pi: 0.80.10
+  contract:
+    inputs:
+      - name: analysis-goal
+        type: biomedical-context
+        required: true
+        description: Scientific question, assay, organism, cohort, groups, contrasts, and intended outputs.
+      - name: input-assets
+        type: project-asset-list
+        required: false
+        description: Existing project files or governed dataset references to register without copying host paths.
+    outputs:
+      - name: project-manifest
+        type: project-manifest
+        required: true
+        description: Governed project layout, design assumptions, provenance requirements, and planned steps.
+      - name: environment-plan
+        type: environment-plan
+        required: true
+        description: Declarative packages and channels for later approval and locked resolution.
+  permissions:
+    tools:
+      - plan.propose
+      - plan.update
+      - project.list_files
+      - project.read_file
+      - project.write_file
+      - environment.plan
+      - artifact.register
+      - analysis.validate
+    projectRead:
+      - project://current/
+    projectWrite:
+      - project://current/README.md
+      - project://current/.shennong/
+      - project://current/environments/
+    datasetAccess: private
+    networkHosts: []
+    computeProfiles: []
+    approvals:
+      - project.write
+      - artifact.register
+  validators:
+    - analysis.validate

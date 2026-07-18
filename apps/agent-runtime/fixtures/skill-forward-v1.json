@@ -1,0 +1,133 @@
+{
+  "validatorInput": {
+    "expected": {
+      "organism": "Homo sapiens",
+      "referenceBuild": "GRCh38",
+      "annotationRelease": "GENCODE 46"
+    },
+    "dataset": {
+      "organism": "Homo sapiens",
+      "referenceBuild": "GRCh38",
+      "annotationRelease": "GENCODE 46",
+      "sampleCount": 6,
+      "uniqueSampleCount": 6,
+      "patientCount": 6,
+      "inferentialUnit": "sample",
+      "groupReplicates": {
+        "case": 3,
+        "control": 3
+      }
+    },
+    "design": {
+      "groups": ["case", "control"],
+      "contrast": ["case", "control"],
+      "multipleTestingRequired": true
+    },
+    "result": {
+      "rowCount": 20,
+      "effectSizePresent": true,
+      "adjustedPValuePresent": true,
+      "expectedArtifactCount": 1,
+      "artifacts": [
+        {
+          "id": "artifact-forward",
+          "sizeBytes": 128,
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "citationIds": ["evidence-forward"]
+    },
+    "evidence": [
+      {
+        "id": "evidence-forward",
+        "kind": "artifact",
+        "runId": "run-forward",
+        "sourceId": "artifact-forward",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "discover-shennong-data",
+      "input": {
+        "search-query": "human glioma single-cell RNA-seq",
+        "data-requirements": { "organism": "Homo sapiens", "build": "GRCh38" }
+      },
+      "expectedToolSequence": ["db.discover_resources", "db.inspect_resource", "db.get_provenance", "analysis.validate"],
+      "output": { "resource-candidates": [{ "resource": "example", "evidenceRef": "evidence-forward" }] },
+      "expectedValidatorStatus": "pass"
+    },
+    {
+      "name": "initialize-biomedical-project",
+      "input": {
+        "analysis-goal": "Compare case and control at the sample level",
+        "input-assets": ["project://current/data/counts.csv"]
+      },
+      "expectedToolSequence": ["plan.propose", "project.write_file", "environment.plan", "artifact.register", "analysis.validate"],
+      "output": {
+        "project-manifest": { "uri": "project://current/.shennong/project.json" },
+        "environment-plan": { "status": "planned" }
+      },
+      "expectedValidatorStatus": "pass"
+    },
+    {
+      "name": "inspect-biomedical-input",
+      "input": {
+        "dataset-ref": "project://current/data/counts.csv",
+        "intended-design": { "contrast": ["case", "control"] }
+      },
+      "expectedToolSequence": ["project.list_files", "project.read_file", "db.get_provenance", "analysis.validate"],
+      "output": { "input-inspection": { "ready": true, "evidenceRef": "evidence-forward" } },
+      "expectedValidatorStatus": "pass"
+    },
+    {
+      "name": "run-shennong-single-cell-workflow",
+      "input": {
+        "project-ref": "project://current/",
+        "dataset-ref": "project://current/data/counts.csv",
+        "analysis-design": { "inferentialUnit": "sample", "contrast": ["case", "control"] }
+      },
+      "expectedToolSequence": ["plan.propose", "project.write_file", "runtime.submit_job", "runtime.get_job", "artifact.register", "analysis.validate"],
+      "output": {
+        "runtime-jobs": [{ "state": "succeeded" }],
+        "artifact-bundle": [{ "id": "artifact-forward" }],
+        "validation-report": { "status": "pass" }
+      },
+      "expectedValidatorStatus": "pass"
+    },
+    {
+      "name": "manage-analysis-results",
+      "input": {
+        "result-bundle": [{ "id": "artifact-forward" }],
+        "validation-report": { "status": "pass" }
+      },
+      "expectedToolSequence": ["runtime.get_job", "project.read_file", "artifact.register", "project.write_file", "analysis.validate"],
+      "output": { "versioned-results": [{ "id": "artifact-forward", "version": 1 }] },
+      "expectedValidatorStatus": "pass"
+    },
+    {
+      "name": "validate-biomedical-analysis",
+      "input": {
+        "dataset-contract": { "organism": "Homo sapiens", "sampleCount": 6 },
+        "analysis-design": { "inferentialUnit": "sample" },
+        "result-bundle": [{ "id": "artifact-forward" }],
+        "evidence-refs": ["evidence-forward"]
+      },
+      "expectedToolSequence": ["db.get_provenance", "project.read_file", "runtime.get_job", "analysis.validate"],
+      "output": { "validation-report": { "status": "pass" } },
+      "expectedValidatorStatus": "pass"
+    },
+    {
+      "name": "interpret-biomedical-results",
+      "input": {
+        "result-bundle": [{ "id": "artifact-forward" }],
+        "validation-report": { "status": "pass" },
+        "evidence-refs": ["evidence-forward"]
+      },
+      "expectedToolSequence": ["project.read_file", "runtime.get_job", "db.get_provenance", "analysis.validate"],
+      "output": { "interpretation-report": { "claims": [{ "evidenceRef": "evidence-forward" }] } },
+      "expectedValidatorStatus": "pass"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+apiVersion: shennong.one/v1
+kind: AgentSkill
+metadata:
+  id: zerostwo/interpret-biomedical-results
+  name: interpret-biomedical-results
+  version: 1.0.0
+  revision: 1
+  digest: sha256:0db120f76c61fd4051e1fb9cf40a047e39ae9b6207223fa1c5a1b4e8e4b92580
+  scope: platform
+  publisher: zerostwo
+  trust: built-in-reviewed
+spec:
+  entrypoint: SKILL.md
+  description: Produce evidence-linked biomedical interpretation from validated project results.
+  lifecycle: active
+  compatibility:
+    os: ">=1.0.0 <2.0.0"
+    runtime: ">=1.0.0 <2.0.0"
+    dbApi: v1
+    pi: 0.80.10
+  contract:
+    inputs:
+      - name: result-bundle
+        type: result-bundle
+        required: true
+        description: Versioned project results and artifacts produced by governed Runtime jobs.
+      - name: validation-report
+        type: validation-report
+        required: true
+        description: Deterministic validation findings whose failures remain blocking and warnings remain visible.
+      - name: evidence-refs
+        type: evidence-ref-list
+        required: true
+        description: Backend-issued evidence records supporting every stored-data claim.
+    outputs:
+      - name: interpretation-report
+        type: interpretation-report
+        required: true
+        description: Evidence-linked findings separated into observations, inference, hypotheses, caveats, and next steps.
+  permissions:
+    tools:
+      - db.get_provenance
+      - project.list_files
+      - project.read_file
+      - runtime.get_job
+      - analysis.validate
+    projectRead:
+      - project://current/results/
+      - project://current/reports/
+      - project://current/.shennong/
+    projectWrite: []
+    datasetAccess: private
+    networkHosts: []
+    computeProfiles: []
+    approvals: []
+  validators:
+    - analysis.validate

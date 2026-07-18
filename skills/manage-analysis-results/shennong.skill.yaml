@@ -1,0 +1,58 @@
+apiVersion: shennong.one/v1
+kind: AgentSkill
+metadata:
+  id: zerostwo/manage-analysis-results
+  name: manage-analysis-results
+  version: 1.0.0
+  revision: 1
+  digest: sha256:1fd7e84894fc6450a8aab7a5aea188d5579af9d19678d41016c349a6dc4b386a
+  scope: platform
+  publisher: zerostwo
+  trust: built-in-reviewed
+spec:
+  entrypoint: SKILL.md
+  description: Verify and register versioned analysis outputs with complete reproducibility metadata.
+  lifecycle: active
+  compatibility:
+    os: ">=1.0.0 <2.0.0"
+    runtime: ">=1.0.0 <2.0.0"
+    dbApi: v1
+    pi: 0.80.10
+  contract:
+    inputs:
+      - name: result-bundle
+        type: result-bundle
+        required: true
+        description: Runtime outputs, logs, environment lock, input versions, and command provenance to verify.
+      - name: validation-report
+        type: validation-report
+        required: true
+        description: Deterministic checks that must not fail before results can be marked complete.
+    outputs:
+      - name: versioned-results
+        type: registered-artifact-list
+        required: true
+        description: Content-addressed artifacts linked to project, run, Skill, Prompt, inputs, and environment digests.
+  permissions:
+    tools:
+      - project.list_files
+      - project.read_file
+      - project.write_file
+      - runtime.get_job
+      - artifact.register
+      - analysis.validate
+    projectRead:
+      - project://current/results/
+      - project://current/reports/
+      - project://current/logs/
+      - project://current/.shennong/
+    projectWrite:
+      - project://current/.shennong/
+    datasetAccess: private
+    networkHosts: []
+    computeProfiles: []
+    approvals:
+      - project.write
+      - artifact.register
+  validators:
+    - analysis.validate

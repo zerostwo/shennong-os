@@ -1,0 +1,13 @@
+.next
+node_modules
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
+.env
+.env.*
+*.env
+secrets
+*.log
+.DS_Store
+Dockerfile

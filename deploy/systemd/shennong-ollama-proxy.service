@@ -1,0 +1,17 @@
+[Unit]
+Description=Proxy Shennong OS Agent requests to loopback-only Ollama
+Requires=shennong-ollama-proxy.socket
+After=ollama.service
+
+[Service]
+ExecStart=/lib/systemd/systemd-socket-proxyd --connections-max=32 127.0.0.1:11434
+DynamicUser=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_INET AF_INET6

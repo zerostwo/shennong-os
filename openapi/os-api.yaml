@@ -1,0 +1,2195 @@
+openapi: 3.1.0
+info:
+  title: Shennong OS API
+  version: 1.0.0
+  description: |
+    V1 control-plane API for Shennong OS. Unscoped Resource catalog endpoints
+    expose only Resources whose permissions.visibility is exactly public.
+    Private Resources are available only through an authenticated Project scope
+    with an explicit binding and Project role.
+
+    Authenticated mutations require an allowed `Origin`. Cookie-authenticated
+    mutations additionally require `X-CSRF-Token` matching the `shennong_os_csrf`
+    cookie. Bearer tokens are opaque Shennong OS session tokens, not JWTs.
+
+    Shennong OS is the sole Project and RBAC authority. Project-scoped data-plane
+    calls first reconcile an idempotent, non-authoritative Research Project
+    shadow in headless ShennongDB; DB never grants access from that shadow.
+servers:
+  - url: /
+tags:
+  - name: System
+  - name: Setup
+  - name: Authentication
+  - name: Administration
+  - name: Projects
+  - name: Threads
+  - name: Runs
+  - name: Jobs
+  - name: Artifacts
+  - name: Memory
+  - name: Skills
+  - name: Providers
+  - name: IDE Access
+security:
+  - sessionCookie: []
+  - bearerSession: []
+paths:
+  /api/v1/public-config:
+    get:
+      tags: [System]
+      operationId: getPublicConfig
+      security: []
+      responses:
+        '200':
+          description: Browser-safe registration and API configuration.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+  /api/v1/capabilities:
+    get:
+      tags: [System]
+      operationId: getCapabilities
+      security: []
+      responses:
+        '200':
+          description: Browser-safe feature capabilities.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+  /healthz:
+    get:
+      tags: [System]
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Service and database are ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: Database is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /version:
+    get:
+      tags: [System]
+      operationId: getVersion
+      security: []
+      responses:
+        '200':
+          description: Build and API versions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, version, api_version]
+                properties:
+                  name: { type: string }
+                  version: { type: string }
+                  api_version: { type: string }
+  /openapi.yaml:
+    get:
+      tags: [System]
+      operationId: getOpenApi
+      security: []
+      responses:
+        '200':
+          description: This OpenAPI document.
+          content:
+            application/yaml:
+              schema: { type: string }
+  /api/v1/setup/status:
+    get:
+      tags: [Setup]
+      operationId: getSetupStatus
+      security: []
+      responses:
+        '200':
+          description: Whether the first administrator must be created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetupStatusEnvelope'
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/setup/admin:
+    post:
+      tags: [Setup]
+      operationId: bootstrapAdministrator
+      description: |
+        Creates the first and only bootstrap administrator. The server
+        serializes competing requests with a PostgreSQL advisory transaction
+        lock and rechecks that no user exists before its insert.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/BootstrapToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountRequest' }
+      responses:
+        '201':
+          description: First administrator created and session cookies issued.
+          headers:
+            Set-Cookie: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionEnvelope' }
+        '409': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/registration-policy:
+    get:
+      tags: [Authentication]
+      operationId: getRegistrationPolicy
+      security: []
+      responses:
+        '200':
+          description: Current registration mode.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegistrationPolicyEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/register:
+    post:
+      tags: [Authentication]
+      operationId: registerUser
+      description: Creates an ordinary user. An invitation is required in invite-only mode.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountRequest' }
+      responses:
+        '201':
+          description: User created and session cookies issued.
+          headers:
+            Set-Cookie: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/sign-in:
+    post:
+      tags: [Authentication]
+      operationId: signIn
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignInRequest' }
+      responses:
+        '200':
+          description: Session created.
+          headers:
+            Set-Cookie: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/sign-out:
+    post:
+      tags: [Authentication]
+      operationId: signOut
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204': { description: Session revoked and cookies expired. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/session:
+    get:
+      tags: [Authentication]
+      operationId: getSession
+      responses:
+        '200':
+          description: Current user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentSessionEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/sessions:
+    get:
+      tags: [Authentication]
+      operationId: listOwnSessions
+      responses:
+        '200':
+          description: Active opaque sessions for the current user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/sessions/{id}:
+    delete:
+      tags: [Authentication]
+      operationId: revokeOwnSession
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204': { description: Session revoked. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/admin/registration-policy:
+    patch:
+      tags: [Administration]
+      operationId: updateRegistrationPolicy
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegistrationPolicyWrite' }
+      responses:
+        '200':
+          description: Policy updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegistrationPolicyEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/admin/invites:
+    get:
+      tags: [Administration]
+      operationId: listInvitations
+      responses:
+        '200':
+          description: Invitation metadata. Raw codes are never returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Administration]
+      operationId: createInvitation
+      description: The raw invitation code is returned only by this response.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteCreate' }
+      responses:
+        '201':
+          description: Invitation created; store its one-time code now.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/admin/invites/{id}:
+    delete:
+      tags: [Administration]
+      operationId: revokeInvitation
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204': { description: Invitation revoked. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/projects:
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      responses:
+        '200':
+          description: Projects visible to the actor.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Projects]
+      operationId: createProject
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectCreate' }
+      responses:
+        '201':
+          description: Private project created with the actor as owner.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/projects/{id}:
+    get:
+      tags: [Projects]
+      operationId: getProject
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Project details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Projects]
+      operationId: updateProject
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectUpdate' }
+      responses:
+        '200':
+          description: Project updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/projects/{id}/members:
+    get:
+      tags: [Projects]
+      operationId: listProjectMembers
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Project members.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/projects/{id}/members/{user_id}:
+    put:
+      tags: [Projects]
+      operationId: putProjectMember
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberWrite' }
+      responses:
+        '200':
+          description: Membership created or updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Projects]
+      operationId: deleteProjectMember
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204': { description: Membership deleted. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/projects/{id}/graph/subgraph:
+    get:
+      tags: [Projects]
+      operationId: getProjectGraphSubgraph
+      description: Project-RBAC graph traversal. The OS reconciles its authoritative project shadow and requires Shennong DB to enforce the same project boundary.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: root
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 180
+            pattern: '^[A-Za-z0-9._:-]+$'
+        - name: depth
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 3, default: 1 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 80 }
+      responses:
+        '200':
+          description: Project-scoped graph subgraph.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/projects/{id}/uploads:
+    get:
+      tags: [Projects]
+      operationId: listProjectUploads
+      description: Lists upload records inside the authenticated Project read boundary.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Project-scoped upload records.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Projects]
+      operationId: uploadProjectFile
+      description: Streams one non-empty file to Shennong DB. OS derives the actor and Project UUID from the authenticated session and never accepts either identity from browser input.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+        - name: X-Filename
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 255 }
+        - name: Content-Length
+          in: header
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 53687091200 }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: Persisted upload record with server-computed SHA-256.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        '411': { description: Content-Length is missing or invalid. }
+        '413': { description: Upload exceeds the configured bounded stream size. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/projects/{id}/uploads/register:
+    post:
+      tags: [Projects]
+      operationId: registerProjectUploads
+      description: Atomically creates a private Resource and immutable Artifacts from uploads owned by the same actor and Project, then binds the Resource to that Project.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [upload_ids, resource_id, name]
+              properties:
+                upload_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: { type: string, format: uuid }
+                resource_id:
+                  type: string
+                  minLength: 1
+                  maxLength: 160
+                  pattern: '^[A-Za-z0-9._-]+$'
+                name: { type: string, minLength: 1, maxLength: 512 }
+                description: { type: string, maxLength: 4096 }
+                organism: { type: string, maxLength: 256 }
+                modality: { type: string, maxLength: 256 }
+                assay: { type: string, maxLength: 256 }
+                reference: { type: string, maxLength: 256 }
+                annotation: { type: string, maxLength: 256 }
+                format: { type: string, minLength: 1, maxLength: 64, default: binary }
+                data_class: { type: string, enum: [raw, canonical, derived], default: raw }
+      responses:
+        '200':
+          description: Private Resource registered and Project-bound.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/threads:
+    get:
+      tags: [Threads]
+      operationId: listThreads
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdOptional'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Project threads.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Thread' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Threads]
+      operationId: createThread
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ThreadCreate' }
+      responses:
+        '201':
+          description: Thread created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Thread' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/threads/{id}:
+    get:
+      tags: [Threads]
+      operationId: getThread
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Thread details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Thread' }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Threads]
+      operationId: updateThread
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ThreadUpdate' }
+      responses:
+        '200':
+          description: Thread updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Thread' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Threads]
+      operationId: deleteThread
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204': { description: Thread and its dependent state deleted. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/threads/{id}/messages:
+    get:
+      tags: [Threads]
+      operationId: listMessages
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Thread messages in creation order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Message' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Threads]
+      operationId: createMessage
+      description: |
+        Idempotent within a thread. Repeating the same `Idempotency-Key`
+        returns the originally persisted message with status 200.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MessageCreate' }
+      responses:
+        '201':
+          description: Message created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Message' }
+        '200':
+          description: Existing message returned after an idempotent retry.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Message' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/threads/{id}/runs:
+    post:
+      tags: [Runs]
+      operationId: createRun
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunCreate' }
+      responses:
+        '201':
+          description: Run queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/threads/{id}/runs/active:
+    get:
+      tags: [Runs]
+      operationId: getActiveThreadRun
+      description: Returns the single resumable Run for an authorized thread, or null.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Current resumable Run and its latest durable event cursor.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [run, last_event_cursor]
+                    properties:
+                      run: { type: [object, 'null'], additionalProperties: true }
+                      last_event_cursor:
+                        type: [string, 'null']
+                        pattern: '^[1-9][0-9]*$'
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/agent:
+    post:
+      tags: [Runs]
+      operationId: streamAgentRun
+      description: |
+        Authenticated OS gateway to the private Agent Runtime. The explicit
+        project header is mandatory and is never inferred. If threadId does not
+        exist, OS creates it inside that project after checking write membership;
+        an existing thread must belong to the same project. Client-supplied tools
+        and internal secrets are never forwarded. A native assistant-ui approval
+        continuation sends one resume response and a fresh runId. OS resolves the
+        persisted interrupt under the authenticated user, Project, and Thread,
+        creates a child Run with the immutable original parent, and rejects replay.
+      parameters:
+        - $ref: '#/components/parameters/ProjectHeader'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgUiRunAgentInput' }
+      responses:
+        '200':
+          description: AG-UI server-sent event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/agent/runs:
+    post:
+      tags: [Runs]
+      operationId: bootstrapInternalAgentRun
+      security: [{ serviceToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/AgentRuntimeService'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InternalRunIdentity' }
+      responses:
+        '200':
+          description: OS-authorized RunRequest with provider, context, skills, tools and a short-lived run capability.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/agent/runs/{id}/metadata:
+    post:
+      tags: [Runs]
+      operationId: recordInternalRunMetadata
+      security: [{ serviceToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/AgentRuntimeService'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Metadata stored. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/agent/runs/{id}/events:
+    post:
+      tags: [Runs]
+      operationId: appendInternalRunEvent
+      security: [{ serviceToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/AgentRuntimeService'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { type: string, maxLength: 128 }
+              additionalProperties: true
+      responses:
+        '201': { description: Event appended with a durable cursor. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/agent/runs/{id}/finish:
+    post:
+      tags: [Runs]
+      operationId: finishInternalAgentRun
+      security: [{ serviceToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/AgentRuntimeService'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InternalRunFinish' }
+      responses:
+        '200': { description: Run finalized and capability revoked. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/agent/runs/{id}/approvals/verify:
+    post:
+      tags: [Runs]
+      operationId: verifyInternalToolCapability
+      security: [{ serviceToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/AgentRuntimeService'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CapabilityRequest' }
+      responses:
+        '200':
+          description: Policy decision and, when allowed, a short-lived one-use execution token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/agent/runs/{id}/tools:
+    post:
+      tags: [Runs]
+      operationId: executeInternalGovernedTool
+      security: [{ serviceToken: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/AgentRuntimeService'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ToolExecutionRequest' }
+      responses:
+        '200':
+          description: Governed backend result after run, project, tool, digest and one-use token checks.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/runs:
+    get:
+      tags: [Runs]
+      operationId: listRuns
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdOptional'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Project runs.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/runs/{id}:
+    get:
+      tags: [Runs]
+      operationId: getRun
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Run details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Runs]
+      operationId: updateRun
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunUpdate' }
+      responses:
+        '200':
+          description: Run state updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/runs/{id}/events:
+    get:
+      tags: [Runs]
+      operationId: listRunEvents
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/AfterEventCursor'
+        - $ref: '#/components/parameters/LastEventId'
+        - $ref: '#/components/parameters/RunEventLimit'
+      responses:
+        '200':
+          description: Ordered append-only run events.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Runs]
+      operationId: createRunEvent
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunEventCreate' }
+      responses:
+        '201':
+          description: Event appended.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/runs/{id}/events/stream:
+    get:
+      tags: [Runs]
+      operationId: streamRunEventReplay
+      description: |
+        Replays persisted AG-UI events strictly after the supplied cursor, then
+        follows the same Run until a durable terminal event is emitted. `after`
+        and `Last-Event-ID`, when both supplied, must be identical and must name
+        an event owned by this Run. Events are emitted once in ascending cursor
+        order; reconnecting never creates or restarts a Run.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/AfterEventCursor'
+        - $ref: '#/components/parameters/LastEventId'
+        - $ref: '#/components/parameters/RunEventLimit'
+      responses:
+        '200':
+          description: Durable AG-UI replay/follow stream; every frame has an SSE id cursor.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/runs/{id}/plan:
+    get:
+      tags: [Runs]
+      operationId: getTaskPlan
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Current versioned task plan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    put:
+      tags: [Runs]
+      operationId: putTaskPlan
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanWrite' }
+      responses:
+        '200':
+          description: New task-plan version stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/projects/{id}/jobs:
+    get:
+      tags: [Jobs]
+      operationId: listJobs
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Project jobs.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Jobs]
+      operationId: createJob
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobCreate' }
+      responses:
+        '201':
+          description: Job queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/jobs:
+    get:
+      tags: [Jobs]
+      operationId: listAccessibleJobs
+      responses:
+        '200':
+          description: Jobs from all projects visible to the actor.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/jobs/{id}:
+    get:
+      tags: [Jobs]
+      operationId: getJob
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Job details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Jobs]
+      operationId: updateJob
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobUpdate' }
+      responses:
+        '200':
+          description: Job updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/jobs/{id}/cancel:
+    post:
+      tags: [Jobs]
+      operationId: cancelRuntimeJob
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          description: Runtime job cancellation requested and durable OS state synchronized.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/projects/{id}/sessions:
+    get:
+      tags: [Jobs]
+      operationId: listRuntimeSessions
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Durable interactive sessions for the project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Jobs]
+      operationId: startRuntimeSession
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RuntimeSessionCreate' }
+      responses:
+        '201':
+          description: Runtime session started and registered in OS.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/sessions/{id}:
+    get:
+      tags: [Jobs]
+      operationId: getRuntimeSession
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Fresh execution-plane state synchronized into OS.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/sessions/{id}/stop:
+    post:
+      tags: [Jobs]
+      operationId: stopRuntimeSession
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          description: Runtime session stopped and durable OS state synchronized.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/sessions/{id}/launch:
+    post:
+      tags: [IDE Access]
+      operationId: createIdeLaunchTicket
+      description: |
+        Creates a 60-second, one-time launch URL on the separately configured
+        IDE origin. Only the Runtime Session creator can launch it.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          description: One-time launch URL and expiry; response is never cacheable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdeLaunchEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /__shennong/launch:
+    get:
+      tags: [IDE Access]
+      operationId: redeemIdeLaunchTicket
+      description: |
+        IDE-origin-only redemption. Atomically consumes the ticket, sets a
+        host-only HttpOnly SameSite=Strict cookie scoped to this Session proxy,
+        then redirects to the IDE. Ordinary OS APIs are rejected on this host.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdeLaunchTicket'
+      responses:
+        '303':
+          description: IDE access cookie issued and browser redirected.
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+            Set-Cookie:
+              schema: { type: string }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/sessions/{id}/proxy:
+    get:
+      tags: [IDE Access]
+      operationId: proxyIdeSessionGet
+      description: |
+        IDE-origin-only streaming HTTP or WebSocket proxy. OS control cookies
+        and browser Authorization are stripped; OS sends Runtime only a fresh
+        30-second JWT scoped to runtime:sessions:proxy and this workspace.
+      security:
+        - ideSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Runtime IDE response or WebSocket upgrade. }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [IDE Access]
+      operationId: proxyIdeSessionPost
+      description: IDE-origin-only streaming form and API proxy.
+      security:
+        - ideSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/IdeOrigin'
+      requestBody:
+        required: false
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '200': { description: Runtime IDE response. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/resources:
+    get:
+      tags: [System]
+      operationId: listDataPlaneResources
+      security: []
+      description: Anonymous catalog proxy that fails closed, returns at most 100 Resources whose permissions.visibility is exactly public, and emits a short public cache policy. Malformed or missing visibility never grants access.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string, maxLength: 256 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, maximum: 1000000, default: 0 }
+        - name: cursor
+          in: query
+          required: false
+          description: Decimal offset cursor. If offset is also present, both values must match.
+          schema: { type: string, pattern: '^[0-9]+$' }
+      responses:
+        '200':
+          description: Bounded public Shennong DB Resource discovery result. Cache-Control is public, max-age=30, stale-while-revalidate=60.
+          content:
+            application/json:
+              schema: {}
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/resources/{id}:
+    get:
+      tags: [System]
+      operationId: getDataPlaneResource
+      security: []
+      description: Anonymous lookup for an explicitly public Resource. Private or unlabelled Resources are returned as 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, maxLength: 180 }
+      responses:
+        '200': { description: Explicitly public Resource contract from Shennong DB. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/resources/{id}/{child}:
+    get:
+      tags: [System]
+      operationId: getDataPlaneResourceChild
+      security: []
+      description: Anonymous child lookup guarded by an exact public Resource preflight. Private or unlabelled parent Resources are returned as 404; private relation targets and project-scoped graph contexts are removed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, maxLength: 180 }
+        - name: child
+          in: path
+          required: true
+          schema: { type: string, enum: [artifacts, relations, graph-context] }
+      responses:
+        '200': { description: 'Bounded, public-only Resource child collection from Shennong DB.' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/query:
+    post:
+      tags: [System]
+      operationId: queryDataPlaneResource
+      description: Authenticated Project-scoped Resource query. project_id and resource are mandatory, the actor needs Project read access, and the Resource must be explicitly bound to that Project.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, resource]
+              properties:
+                project_id: { type: string, format: uuid }
+                resource:
+                  type: string
+                  minLength: 1
+                  maxLength: 180
+                  pattern: '^[A-Za-z0-9._:-]+$'
+              additionalProperties: true
+      responses:
+        '200': { description: Bounded query result from Shennong DB. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/projects/{id}/{collection}:
+    get:
+      tags: [Projects]
+      operationId: getProjectDataPlaneCollection
+      description: Project-RBAC proxy that first reconciles the OS-authoritative DB shadow, then reads context-pack, entities, activities, studies, associations, evidence or resources.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/ProjectDataCollection'
+      responses:
+        '200': { description: Project-scoped Shennong DB response. }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Projects]
+      operationId: createProjectDataPlaneRecord
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/ProjectDataCollection'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Project-scoped Shennong DB response. }
+        '201': { description: Project-scoped record created. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/projects/{id}/artifacts:
+    get:
+      tags: [Artifacts]
+      operationId: listArtifacts
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Project artifact metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Artifacts]
+      operationId: createArtifact
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArtifactCreate' }
+      responses:
+        '201':
+          description: Artifact metadata stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/memories:
+    get:
+      tags: [Memory]
+      operationId: listMemories
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdOptional'
+      responses:
+        '200':
+          description: Actor-owned memory records in the selected scope.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Memory]
+      operationId: createMemory
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryCreate' }
+      responses:
+        '201':
+          description: Memory and immutable first version created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/memories/{id}:
+    get:
+      tags: [Memory]
+      operationId: getMemory
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Memory and current version.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Memory]
+      operationId: updateMemory
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemoryUpdate' }
+      responses:
+        '200':
+          description: Metadata updated and, when content changes, a new immutable version created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Memory]
+      operationId: archiveMemory
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204': { description: Memory lifecycle set to archived. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/skills:
+    get:
+      tags: [Skills]
+      operationId: listSkills
+      responses:
+        '200':
+          description: Skills visible to the actor.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Skills]
+      operationId: createSkill
+      description: User and generated Skills always begin as drafts. Signed built-ins are installed only by trusted platform migrations.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SkillCreate' }
+      responses:
+        '201':
+          description: Skill and immutable first version created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/skills/{id}:
+    get:
+      tags: [Skills]
+      operationId: getSkill
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Skill and current immutable version.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Skills]
+      operationId: updateSkill
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SkillUpdate' }
+      responses:
+        '200':
+          description: Mutable skill metadata updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/skills/{id}/versions:
+    get:
+      tags: [Skills]
+      operationId: listSkillVersions
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Immutable skill versions and digests.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Skills]
+      operationId: createSkillVersion
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SkillVersionCreate' }
+      responses:
+        '201':
+          description: Immutable skill version created with a SHA-256 digest.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/threads/{id}/skills/{skill_id}:
+    put:
+      tags: [Skills]
+      operationId: enableThreadSkill
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/SkillId'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SkillEnable' }
+      responses:
+        '200':
+          description: Exact skill version pinned to the thread.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Skills]
+      operationId: disableThreadSkill
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/SkillId'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204': { description: Skill disabled for the thread. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/threads/{id}/skills:
+    get:
+      tags: [Skills]
+      operationId: listThreadSkills
+      description: Lists every Skill visible to the actor with its selection state for this thread.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Visible Skills with enabled and selected_version fields.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/providers:
+    get:
+      tags: [Providers]
+      operationId: listProviders
+      responses:
+        '200':
+          description: Provider configurations without credential material.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Providers]
+      operationId: createProvider
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProviderCreate' }
+      responses:
+        '201':
+          description: Provider created; API key encrypted at rest.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/providers/{id}:
+    patch:
+      tags: [Providers]
+      operationId: updateProvider
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProviderUpdate' }
+      responses:
+        '200':
+          description: Provider updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Providers]
+      operationId: deleteProvider
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204': { description: Provider deleted. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/system/dependencies:
+    get:
+      tags: [Administration]
+      operationId: getDependencyHealth
+      responses:
+        '200':
+          description: Typed Shennong DB and runtime info probes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/audit-events:
+    get:
+      tags: [Administration]
+      operationId: listAuditEvents
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Newest audit events first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: shennong_os_session
+      description: Random opaque session token. Stored server-side only as a SHA-256 hash.
+    bearerSession:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-session-token
+    serviceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-service-token
+      description: Agent Runtime callback token loaded by both services from secret files.
+    ideSessionCookie:
+      type: apiKey
+      in: cookie
+      name: shennong_ide_session
+      description: |
+        Opaque, server-hashed access token. It is host-only, HttpOnly,
+        SameSite=Strict and path-scoped to exactly one Runtime Session proxy.
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SkillId:
+      name: skill_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Origin:
+      name: Origin
+      in: header
+      required: true
+      description: Must exactly match a configured allowed origin.
+      schema: { type: string, format: uri }
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: false
+      description: Required for cookie-authenticated mutations; must match the shennong_os_csrf cookie.
+      schema: { type: string, minLength: 32 }
+    BootstrapToken:
+      name: X-Shennong-Bootstrap-Token
+      in: header
+      required: true
+      schema: { type: string, minLength: 32 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique within one thread. Use the same key when retrying message persistence.
+      schema: { type: string, minLength: 8, maxLength: 200 }
+    AgentRuntimeService:
+      name: X-Shennong-Service
+      in: header
+      required: true
+      schema: { type: string, const: agent-runtime }
+    ProjectHeader:
+      name: X-Shennong-Project-Id
+      in: header
+      required: true
+      description: Explicit project scope for this Agent Run; never inferred from UI state.
+      schema: { type: string, format: uuid }
+    IdeLaunchTicket:
+      name: ticket
+      in: query
+      required: true
+      description: 60-second one-time launch ticket returned by the OS origin.
+      schema: { type: string, minLength: 32, maxLength: 256 }
+    IdeOrigin:
+      name: Origin
+      in: header
+      required: true
+      description: Must exactly equal SHENNONG_IDE_PUBLIC_ORIGIN.
+      schema: { type: string, format: uri }
+    ProjectDataCollection:
+      name: collection
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [context-pack, entities, activities, studies, associations, evidence, resources]
+    ProjectIdRequired:
+      name: project_id
+      in: query
+      required: true
+      schema: { type: string, format: uuid }
+    ProjectIdOptional:
+      name: project_id
+      in: query
+      required: false
+      description: Omit for actor-private, non-project memory.
+      schema: { type: string, format: uuid }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 500 }
+    AfterEventCursor:
+      name: after
+      in: query
+      required: false
+      description: Return or stream only events strictly after this Run-owned cursor; zero starts at the beginning.
+      schema: { type: string, pattern: '^(0|[1-9][0-9]*)$', default: '0' }
+    LastEventId:
+      name: Last-Event-ID
+      in: header
+      required: false
+      description: SSE reconnect cursor. When `after` is also present, both values must be identical.
+      schema: { type: string, pattern: '^(0|[1-9][0-9]*)$' }
+    RunEventLimit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum events per ordered database batch.
+      schema: { type: integer, minimum: 1, maximum: 1000, default: 500 }
+  responses:
+    Error:
+      description: Structured API error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+  schemas:
+    AgUiRunAgentInput:
+      type: object
+      required: [threadId, runId, messages]
+      properties:
+        threadId: { type: string, format: uuid }
+        runId: { type: string, format: uuid }
+        parentRunId: { type: [string, 'null'], format: uuid }
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items: { type: object, additionalProperties: true }
+        state: {}
+        tools:
+          description: Ignored; only server-registered tools are authoritative.
+        context:
+          description: Ignored; durable OS context is authoritative.
+        forwardedProps:
+          description: Ignored.
+        resume:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items: { $ref: '#/components/schemas/AgUiResumeEntry' }
+    AgUiResumeEntry:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [interruptId, status, payload]
+          properties:
+            interruptId: { type: string, format: uuid }
+            status: { type: string, const: resolved }
+            payload:
+              type: object
+              additionalProperties: false
+              required: [approved]
+              properties:
+                approved: { type: boolean, const: true }
+        - type: object
+          additionalProperties: false
+          required: [interruptId, status]
+          properties:
+            interruptId: { type: string, format: uuid }
+            status: { type: string, const: cancelled }
+    InternalRunIdentity:
+      type: object
+      required: [thread_id, run_id]
+      properties:
+        thread_id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        parent_run_id: { type: [string, 'null'], format: uuid }
+    InternalRunFinish:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [succeeded, failed, failed_validation, cancelled] }
+        result: { type: [object, 'null'], additionalProperties: true }
+        error: { type: [object, 'null'], additionalProperties: true }
+    CapabilityRequest:
+      type: object
+      required: [runId, userId, projectId, toolCallId, toolName, argumentsDigest, risk, runCapabilityToken, arguments]
+      properties:
+        runId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        toolCallId: { type: string, minLength: 1, maxLength: 256 }
+        toolName: { type: string, minLength: 1, maxLength: 128 }
+        argumentsDigest: { type: string, pattern: '^[0-9a-f]{64}$' }
+        risk: { type: string, enum: [read, write, network, compute, destructive, admin] }
+        runCapabilityToken: { type: string, minLength: 32 }
+        arguments: { type: object, additionalProperties: true }
+    ToolExecutionRequest:
+      allOf:
+        - $ref: '#/components/schemas/CapabilityRequest'
+        - type: object
+          required: [arguments, executionToken]
+          properties:
+            arguments: { type: object, additionalProperties: true }
+            executionToken: { type: string, minLength: 32 }
+    RuntimeSessionCreate:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [rstudio, jupyterlab] }
+        worker_profile: { type: [string, 'null'], enum: [interactive-standard, ide-small, null] }
+        idle_timeout_seconds: { type: [integer, 'null'], minimum: 300, maximum: 28800 }
+        max_lifetime_seconds: { type: [integer, 'null'], minimum: 300, maximum: 28800 }
+    IdeLaunchEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [launch_url, expires_at]
+          properties:
+            launch_url: { type: string, format: uri }
+            expires_at: { type: string, format: date-time }
+    Health:
+      type: object
+      required: [status, version, database]
+      properties:
+        status: { type: string, enum: [ok, unavailable] }
+        version: { type: string }
+        database: { type: string, enum: [ready, unavailable] }
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: {}
+    ObjectEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { type: object, additionalProperties: true }
+    ListEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { type: object, additionalProperties: true }
+    SetupStatusEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [needs_setup]
+          properties:
+            needs_setup: { type: boolean }
+    RegistrationPolicyEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [registration_mode, invite_required]
+          properties:
+            registration_mode: { $ref: '#/components/schemas/RegistrationMode' }
+            invite_required: { type: boolean }
+    RegistrationMode:
+      type: string
+      enum: [disabled, invite_only, open]
+    RegistrationPolicyWrite:
+      type: object
+      required: [registration_mode]
+      properties:
+        registration_mode: { $ref: '#/components/schemas/RegistrationMode' }
+    AccountRequest:
+      type: object
+      required: [display_name, email, password]
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 320 }
+        password: { type: string, format: password, minLength: 12, maxLength: 1024 }
+        invite_code:
+          type: [string, 'null']
+          description: Required only when registration_mode is invite_only; ignored for bootstrap.
+    SignInRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+    SessionEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [id, email, display_name, role]
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string, format: email }
+            display_name: { type: string }
+            role: { type: string, enum: [admin, user] }
+            csrf_token:
+              type: string
+              description: Present when a new session is issued.
+    CurrentSessionEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [authenticated]
+          properties:
+            authenticated: { type: boolean }
+            user:
+              type: object
+              required: [id, email, display_name, role]
+              properties:
+                id: { type: string, format: uuid }
+                email: { type: string, format: email }
+                display_name: { type: string }
+                role: { type: string, enum: [admin, user] }
+    InviteCreate:
+      type: object
+      properties:
+        email_constraint: { type: [string, 'null'], format: email }
+        max_uses: { type: [integer, 'null'], minimum: 1, maximum: 10000, default: 1 }
+        expires_in_seconds: { type: [integer, 'null'], minimum: 60 }
+        note: { type: [string, 'null'], maxLength: 1000 }
+    ProjectCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 10000, default: '' }
+        visibility: { type: [string, 'null'], enum: [private, null], default: private }
+    ProjectUpdate:
+      type: object
+      properties:
+        name: { type: [string, 'null'], minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 10000 }
+        visibility: { type: [string, 'null'], enum: [private, null] }
+        status: { type: [string, 'null'], enum: [regular, active, archived, null] }
+    MemberWrite:
+      type: object
+      required: [role]
+      properties:
+        role: { type: string, enum: [owner, admin, editor, viewer] }
+    ThreadCreate:
+      type: object
+      required: [project_id]
+      properties:
+        project_id: { type: string, format: uuid }
+        title: { type: [string, 'null'], maxLength: 500 }
+        provider_id: { type: [string, 'null'], format: uuid }
+        scope:
+          type: [string, 'null']
+          enum: [project, null]
+          description: V1 supports project scope only.
+    ThreadUpdate:
+      type: object
+      properties:
+        title: { type: [string, 'null'], maxLength: 500 }
+        status: { type: [string, 'null'], enum: [active, archived, null] }
+        provider_id: { type: [string, 'null'], format: uuid }
+    Thread:
+      type: object
+      required: [id, project_id, scope, owner_user_id, title, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        scope: { type: string, const: project }
+        owner_user_id: { type: string, format: uuid }
+        provider_id: { type: [string, 'null'], format: uuid }
+        title: { type: string }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    MessageCreate:
+      type: object
+      required: [content_json]
+      properties:
+        role:
+          type: [string, 'null']
+          enum: [user, assistant, system, tool, null]
+          description: Ordinary users may create user-role messages only.
+        content_json: {}
+        status: { type: [string, 'null'], enum: [pending, completed, failed, cancelled, null] }
+        attachments: { default: [] }
+        metadata: { default: {} }
+    Message:
+      type: object
+      required: [id, thread_id, role, content_json, status, attachments, metadata, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        thread_id: { type: string, format: uuid }
+        role: { type: string, enum: [user, assistant, system, tool] }
+        content_json: {}
+        status: { type: string }
+        attachments: {}
+        metadata: {}
+        created_at: { type: string, format: date-time }
+    RunCreate:
+      type: object
+      properties:
+        input: { default: {} }
+    RunUpdate:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
+        output: { default: {} }
+        error: { default: {} }
+    RunEventCreate:
+      type: object
+      required: [event_type]
+      properties:
+        event_type: { type: string, minLength: 1, maxLength: 120 }
+        payload: { default: {} }
+    PlanWrite:
+      type: object
+      required: [items]
+      properties:
+        items: {}
+    JobCreate:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, minLength: 1, maxLength: 120 }
+        run_id: { type: [string, 'null'], format: uuid }
+        spec: { default: {} }
+    JobUpdate:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [queued, running, succeeded, failed, cancelled] }
+        result: { default: {} }
+    ArtifactCreate:
+      type: object
+      required: [kind, name, locator]
+      properties:
+        job_id: { type: [string, 'null'], format: uuid }
+        kind: { type: string }
+        name: { type: string }
+        locator: { type: string }
+        media_type: { type: [string, 'null'] }
+        size_bytes: { type: [integer, 'null'], minimum: 0 }
+        content_sha256: { type: [string, 'null'], pattern: '^[a-fA-F0-9]{64}$' }
+        metadata: { default: {} }
+    MemoryCreate:
+      type: object
+      required: [title, content]
+      properties:
+        project_id: { type: [string, 'null'], format: uuid }
+        title: { type: string, minLength: 1, maxLength: 500 }
+        content: { type: string }
+        source_kind: { type: [string, 'null'] }
+        source_id: { type: [string, 'null'] }
+    MemoryUpdate:
+      type: object
+      properties:
+        title: { type: [string, 'null'] }
+        content: { type: [string, 'null'] }
+        lifecycle: { type: [string, 'null'], enum: [active, archived, null] }
+        change_note: { type: [string, 'null'] }
+    SkillCreate:
+      type: object
+      required: [name, content]
+      properties:
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        slug: { type: [string, 'null'] }
+        trust_level:
+          type: [string, 'null']
+          enum: [admin_curated, user, generated, null]
+        lifecycle: { type: [string, 'null'], enum: [draft, active, disabled, archived, null] }
+        manifest: { type: object, additionalProperties: true, default: {} }
+        content: { type: string }
+        package_version: { type: [string, 'null'] }
+        change_note: { type: [string, 'null'] }
+    SkillUpdate:
+      type: object
+      properties:
+        name: { type: [string, 'null'] }
+        description: { type: [string, 'null'] }
+        lifecycle: { type: [string, 'null'], enum: [draft, active, disabled, archived, null] }
+        manifest: { type: [object, 'null'], additionalProperties: true }
+    SkillVersionCreate:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string }
+        package_version: { type: [string, 'null'] }
+        change_note: { type: [string, 'null'] }
+    SkillEnable:
+      type: object
+      properties:
+        version:
+          type: [integer, 'null']
+          minimum: 1
+          description: Omit to pin the current version.
+    ProviderCreate:
+      type: object
+      required: [name, provider_kind, base_url, model]
+      properties:
+        name: { type: string }
+        provider_kind: { type: string }
+        base_url: { type: string, format: uri }
+        model: { type: string }
+        data_policy: { type: [string, 'null'] }
+        api_key: { type: [string, 'null'], writeOnly: true }
+        enabled: { type: [boolean, 'null'], default: true }
+        is_default: { type: [boolean, 'null'], default: false }
+    ProviderUpdate:
+      type: object
+      properties:
+        name: { type: [string, 'null'] }
+        base_url: { type: [string, 'null'], format: uri }
+        model: { type: [string, 'null'] }
+        data_policy: { type: [string, 'null'] }
+        api_key: { type: [string, 'null'], writeOnly: true }
+        enabled: { type: [boolean, 'null'] }
+        is_default: { type: [boolean, 'null'] }

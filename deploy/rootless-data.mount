@@ -1,0 +1,12 @@
+[Unit]
+Description=Hard-cap filesystem for Shennong Runtime rootless Docker
+Before=local-fs.target
+
+[Mount]
+What=/srv/shennong.one/storage/rootless-docker.ext4
+Where=/home/shennong-runtime/.local/share/shennong-runtime-docker
+Type=ext4
+Options=loop,nosuid,nodev,noatime
+
+[Install]
+WantedBy=local-fs.target

@@ -1,0 +1,50 @@
+apiVersion: shennong.one/v1
+kind: AgentSkill
+metadata:
+  id: zerostwo/discover-shennong-data
+  name: discover-shennong-data
+  version: 1.0.0
+  revision: 1
+  digest: sha256:0fcb8f5742244914090c614a55290d0d6290fd80f602f7b01888be2d2ff51ba6
+  scope: platform
+  publisher: zerostwo
+  trust: built-in-reviewed
+spec:
+  entrypoint: SKILL.md
+  description: Discover, inspect, query, and cite governed Shennong DB Resources without overclaiming availability.
+  lifecycle: active
+  compatibility:
+    os: ">=1.0.0 <2.0.0"
+    runtime: ">=1.0.0 <2.0.0"
+    dbApi: v1
+    pi: 0.80.10
+  contract:
+    inputs:
+      - name: search-query
+        type: text
+        required: true
+        description: Disease, cohort, assay, modality, feature, or other bounded discovery terms.
+      - name: data-requirements
+        type: biomedical-context
+        required: false
+        description: Expected organism, reference build, annotation, cohort, license, and operation needs.
+    outputs:
+      - name: resource-candidates
+        type: resource-candidate-list
+        required: true
+        description: Readable Resource versions with contracts, provenance, caveats, and EvidenceRef identifiers.
+  permissions:
+    tools:
+      - db.discover_resources
+      - db.inspect_resource
+      - db.query_resource
+      - db.get_provenance
+      - analysis.validate
+    projectRead: []
+    projectWrite: []
+    datasetAccess: public
+    networkHosts: []
+    computeProfiles: []
+    approvals: []
+  validators:
+    - analysis.validate

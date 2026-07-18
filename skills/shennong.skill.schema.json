@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shennong.one/schemas/shennong.skill.v1.json",
+  "title": "Shennong Agent Skill V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "const": "shennong.one/v1" },
+    "kind": { "const": "AgentSkill" },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "version", "revision", "digest", "scope", "publisher", "trust"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9-]{0,63}$" },
+        "name": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$" },
+        "version": { "type": "string" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "scope": { "enum": ["platform", "installation", "user", "project"] },
+        "publisher": { "type": "string", "minLength": 1 },
+        "trust": { "enum": ["built-in-reviewed", "admin-reviewed", "untrusted"] }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entrypoint", "description", "lifecycle", "compatibility", "contract", "permissions", "validators"],
+      "properties": {
+        "entrypoint": { "const": "SKILL.md" },
+        "description": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "lifecycle": { "enum": ["draft", "validating", "active", "deprecated", "disabled", "revoked"] },
+        "compatibility": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["os", "runtime", "dbApi", "pi"],
+          "properties": {
+            "os": { "type": "string" },
+            "runtime": { "type": "string" },
+            "dbApi": { "type": "string" },
+            "pi": { "type": "string" }
+          }
+        },
+        "contract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["inputs", "outputs"],
+          "properties": {
+            "inputs": { "$ref": "#/$defs/contractFields" },
+            "outputs": { "$ref": "#/$defs/contractFields" }
+          }
+        },
+        "permissions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tools", "projectRead", "projectWrite", "datasetAccess", "networkHosts", "computeProfiles", "approvals"],
+          "properties": {
+            "tools": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+            "projectRead": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+            "projectWrite": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+            "datasetAccess": { "enum": ["public", "private"] },
+            "networkHosts": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+            "computeProfiles": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+            "approvals": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+          }
+        },
+        "validators": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    }
+  },
+  "$defs": {
+    "contractFields": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "type", "required", "description"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$" },
+          "type": { "type": "string", "pattern": "^[a-z][a-z0-9.-]{0,63}$" },
+          "required": { "type": "boolean" },
+          "description": { "type": "string", "minLength": 1, "maxLength": 512 }
+        }
+      }
+    }
+  }
+}

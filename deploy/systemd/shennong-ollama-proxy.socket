@@ -1,0 +1,12 @@
+[Unit]
+Description=Shennong OS private control-network socket for local Ollama
+After=docker.service
+
+[Socket]
+ListenStream=172.30.0.1:11434
+FreeBind=true
+NoDelay=true
+MaxConnections=32
+
+[Install]
+WantedBy=sockets.target

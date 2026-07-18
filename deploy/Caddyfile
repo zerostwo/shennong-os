@@ -1,0 +1,40 @@
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	@ide host {$SHENNONG_IDE_HOST}
+	handle @ide {
+		@ide_launch path /__shennong/launch
+		handle @ide_launch {
+			reverse_proxy os-server:8080
+		}
+
+		# Keep every IDE asset, API, and WebSocket request behind the OS
+		# session proxy. The anchored UUID segment prevents the independent IDE
+		# host from becoming a general-purpose route into the control plane.
+		@ide_session_proxy path_regexp ide_session_proxy ^/v1/sessions/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/proxy(?:/.*)?$
+		handle @ide_session_proxy {
+			reverse_proxy os-server:8080
+		}
+
+		handle {
+			respond 404
+		}
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	log {
+		output stdout
+		format filter {
+			request>uri query {
+				replace ticket REDACTED
+			}
+			wrap json
+		}
+	}
+}

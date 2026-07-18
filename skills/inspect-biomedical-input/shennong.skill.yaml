@@ -1,0 +1,50 @@
+apiVersion: shennong.one/v1
+kind: AgentSkill
+metadata:
+  id: zerostwo/inspect-biomedical-input
+  name: inspect-biomedical-input
+  version: 1.0.0
+  revision: 1
+  digest: sha256:fee3c991089726ebe6d63b00831205b182a764cedabb83c67764251722a5961b
+  scope: platform
+  publisher: zerostwo
+  trust: built-in-reviewed
+spec:
+  entrypoint: SKILL.md
+  description: Read-only inspection of biomedical inputs and metadata before analysis planning.
+  lifecycle: active
+  compatibility:
+    os: ">=1.0.0 <2.0.0"
+    runtime: ">=1.0.0 <2.0.0"
+    dbApi: v1
+    pi: 0.80.10
+  contract:
+    inputs:
+      - name: dataset-ref
+        type: dataset-ref
+        required: true
+        description: Governed Resource or project-relative dataset URI to inspect read-only.
+      - name: intended-design
+        type: analysis-design
+        required: false
+        description: Expected groups, contrasts, pairing, inferential unit, organism, build, and annotation.
+    outputs:
+      - name: input-inspection
+        type: input-inspection-report
+        required: true
+        description: Observed format, dimensions, identifiers, provenance, compatibility, missing metadata, and blockers.
+  permissions:
+    tools:
+      - project.list_files
+      - project.read_file
+      - db.get_provenance
+      - analysis.validate
+    projectRead:
+      - project://current/
+    projectWrite: []
+    datasetAccess: private
+    networkHosts: []
+    computeProfiles: []
+    approvals: []
+  validators:
+    - analysis.validate

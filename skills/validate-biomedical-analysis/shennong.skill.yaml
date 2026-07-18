@@ -1,0 +1,59 @@
+apiVersion: shennong.one/v1
+kind: AgentSkill
+metadata:
+  id: zerostwo/validate-biomedical-analysis
+  name: validate-biomedical-analysis
+  version: 1.0.0
+  revision: 1
+  digest: sha256:ad683d1a8737cb02d2eb467a94587320bbb7197e3db21ba5731f791426d9eae8
+  scope: platform
+  publisher: zerostwo
+  trust: built-in-reviewed
+spec:
+  entrypoint: SKILL.md
+  description: Deterministically validate biomedical design, outputs, provenance, artifacts, and citations.
+  lifecycle: active
+  compatibility:
+    os: ">=1.0.0 <2.0.0"
+    runtime: ">=1.0.0 <2.0.0"
+    dbApi: v1
+    pi: 0.80.10
+  contract:
+    inputs:
+      - name: dataset-contract
+        type: dataset-contract
+        required: true
+        description: Observed organism, build, annotation, samples, patients, groups, and identifiers.
+      - name: analysis-design
+        type: analysis-design
+        required: true
+        description: Expected provenance, contrast, pairing, inferential unit, replication, and testing policy.
+      - name: result-bundle
+        type: result-bundle
+        required: true
+        description: Result rows, effect and uncertainty fields, adjusted values, and expected artifacts.
+      - name: evidence-refs
+        type: evidence-ref-list
+        required: true
+        description: Backend-issued evidence records cited by the result.
+    outputs:
+      - name: validation-report
+        type: validation-report
+        required: true
+        description: Pass, warn, or fail status with stable deterministic findings and paths.
+  permissions:
+    tools:
+      - db.get_provenance
+      - project.list_files
+      - project.read_file
+      - runtime.get_job
+      - analysis.validate
+    projectRead:
+      - project://current/
+    projectWrite: []
+    datasetAccess: private
+    networkHosts: []
+    computeProfiles: []
+    approvals: []
+  validators:
+    - analysis.validate
