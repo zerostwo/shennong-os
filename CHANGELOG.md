@@ -77,6 +77,13 @@ The format is based on [Keep a Changelog 1.1.0], and this project adheres to
 
 ### Fixed
 
+- Restore evidence-backed public Resource analysis in personal Agent chats by
+  loading selected Skill workflows into Pi, exposing the Skill load reference,
+  enabling public inspect/query/provenance tools, and falling back from an empty
+  metadata search to the bounded public catalog.
+- Mark biomedical answers that fail deterministic validation as AG-UI errors and
+  prevent failed-validation assistant text from being persisted as a completed
+  answer.
 - Allow visitor chat discovery without protected runtime requests, create
   canonical UUID threads only on first send, preserve visible AG-UI failures
   across the first history update, and persist preflight failures as terminal
@@ -88,6 +95,9 @@ The format is based on [Keep a Changelog 1.1.0], and this project adheres to
 
 ### Security
 
+- Re-check public visibility before every projectless Resource inspection or
+  query, filter service-account catalog results to explicit public Resources,
+  and bind issued EvidenceRefs to the queried Resource and operation.
 - Prevent administrators from disabling or demoting the final active
   administrator, and revoke a user's active sessions when that account is
   disabled.

@@ -599,7 +599,7 @@ pub(crate) async fn execute_db_tool(
                 .ok_or_else(|| ApiError::invalid("resource is required"))?;
             validate_segment(resource)?;
             ensure_project_resource(state, project_id, resource).await?;
-            let body = agent_resource_query_body(project_id, arguments)?;
+            let body = agent_resource_query_body(Some(project_id), arguments)?;
             db_request(state, Method::POST, &["query"], &[], Some(&body)).await?
         }
         _ => return Err(ApiError::not_found()),
@@ -618,7 +618,45 @@ pub(crate) async fn execute_db_tool(
     Ok(response.body)
 }
 
-pub(crate) async fn execute_public_db_discovery(
+pub(crate) async fn execute_public_db_tool(
+    state: &AppState,
+    name: &str,
+    arguments: &Value,
+) -> Result<Value, ApiError> {
+    match name {
+        "db.discover_resources" => execute_public_db_discovery(state, arguments).await,
+        "db.inspect_resource" | "db.get_provenance" => {
+            let resource = arguments
+                .get("resource")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ApiError::invalid("resource is required"))?;
+            validate_segment(resource)?;
+            let response =
+                db_request(state, Method::GET, &["resources", resource], &[], None).await?;
+            require_public_resource_response(&response, resource)?;
+            Ok(response.body)
+        }
+        "db.query_resource" => {
+            let resource = arguments
+                .get("resource")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ApiError::invalid("resource is required"))?;
+            validate_segment(resource)?;
+            let resource_response =
+                db_request(state, Method::GET, &["resources", resource], &[], None).await?;
+            require_public_resource_response(&resource_response, resource)?;
+            let body = agent_resource_query_body(None, arguments)?;
+            let response = db_request(state, Method::POST, &["query"], &[], Some(&body)).await?;
+            if !response.status.is_success() {
+                return Err(public_data_plane_error(response.status));
+            }
+            Ok(response.body)
+        }
+        _ => Err(ApiError::not_found()),
+    }
+}
+
+async fn execute_public_db_discovery(
     state: &AppState,
     arguments: &Value,
 ) -> Result<Value, ApiError> {
@@ -636,15 +674,36 @@ pub(crate) async fn execute_public_db_discovery(
     let limit = bounded_agent_resource_limit(arguments.get("limit"))?;
     let mut params = vec![("limit", limit.to_string())];
     if !query.is_empty() {
-        params.push(("q", query));
+        params.push(("q", query.clone()));
     }
-    let response = db_request(state, Method::GET, &["resources"], &params, None).await?;
-    if !response.status.is_success() {
-        return Err(public_data_plane_error(response.status));
+    let response = filter_public_resource_list(
+        db_request(state, Method::GET, &["resources"], &params, None).await?,
+    )?;
+    let empty = response
+        .body
+        .get("data")
+        .and_then(Value::as_array)
+        .is_some_and(Vec::is_empty);
+    if !query.is_empty() && empty {
+        let fallback_params = vec![("limit", PUBLIC_RESOURCE_CATALOG_LIMIT.to_string())];
+        let mut fallback = filter_public_resource_list(
+            db_request(state, Method::GET, &["resources"], &fallback_params, None).await?,
+        )?;
+        fallback.body["discovery"] = json!({
+            "query": query,
+            "fallback": "bounded_public_catalog",
+            "reason": "no_metadata_match"
+        });
+        return Ok(fallback.body);
     }
-    Ok(response.body)
+    let mut body = response.body;
+    body["discovery"] = json!({"query":query,"fallback":Value::Null});
+    Ok(body)
 }
-fn agent_resource_query_body(project_id: Uuid, arguments: &Value) -> Result<Value, ApiError> {
+fn agent_resource_query_body(
+    project_id: Option<Uuid>,
+    arguments: &Value,
+) -> Result<Value, ApiError> {
     let object = arguments
         .as_object()
         .ok_or_else(|| ApiError::invalid("query arguments must be an object"))?;
@@ -666,12 +725,14 @@ fn agent_resource_query_body(project_id: Uuid, arguments: &Value) -> Result<Valu
         return Err(ApiError::invalid("context must be an object"));
     }
     let mut body = json!({
-        "project_id": project_id,
         "resource": resource,
         "operation": operation,
         "context": context,
         "options": {"limit": limit}
     });
+    if let Some(project_id) = project_id {
+        body["project_id"] = json!(project_id);
+    }
     if let Some(feature) = object.get("feature").and_then(Value::as_str) {
         body["feature"] = json!({"type": "gene", "name": feature});
     }
@@ -1749,7 +1810,7 @@ mod tests {
     fn agent_query_is_adapted_to_shennong_db_resource_query_contract() {
         let project_id = Uuid::from_u128(11);
         let body = agent_resource_query_body(
-            project_id,
+            Some(project_id),
             &json!({
                 "resource": "pbmc-3k",
                 "operation": "expression",
@@ -1776,18 +1837,36 @@ mod tests {
     fn agent_query_defaults_and_bounds_limit() {
         let project_id = Uuid::from_u128(11);
         let defaulted = agent_resource_query_body(
-            project_id,
+            Some(project_id),
             &json!({"resource":"pbmc-3k","operation":"expression"}),
         )
         .expect("defaulted query");
         assert_eq!(defaulted["options"]["limit"], 100);
 
         let bounded = agent_resource_query_body(
-            project_id,
+            Some(project_id),
             &json!({"resource":"pbmc-3k","operation":"expression","limit":10000}),
         )
         .expect("bounded query");
         assert_eq!(bounded["options"]["limit"], 1000);
+    }
+
+    #[test]
+    fn public_agent_query_omits_project_scope_but_preserves_typed_feature() {
+        let body = agent_resource_query_body(
+            None,
+            &json!({
+                "resource":"toil",
+                "operation":"expression",
+                "feature":"YTHDF2",
+                "context":{"primary_site":"Colon"},
+                "limit":1000
+            }),
+        )
+        .expect("valid public Resource query");
+        assert!(!body.as_object().unwrap().contains_key("project_id"));
+        assert_eq!(body["feature"], json!({"type":"gene","name":"YTHDF2"}));
+        assert_eq!(body["options"]["limit"], 1000);
     }
 
     #[test]

@@ -55,6 +55,35 @@ test("prompt compiler escapes injected tags and redacts secrets", () => {
   assert.match(compiled.digest, /^sha256:[a-f0-9]{64}$/);
 });
 
+test("prompt compiler includes the exact selected Skill workflow and exposed load reference", () => {
+  const run = baseRun();
+  run.context = {
+    selectedSkills: [{
+      id: "zerostwo/discover-shennong-data",
+      version: "1.0.0",
+      digest: `sha256:${"a".repeat(64)}`,
+      loadRef: "4b23d46a-ac8a-544f-8492-7f461b76e293:1",
+      name: "discover-shennong-data",
+      description: "Discover governed public Resources",
+      content: "Call db.discover_resources, inspect the Resource, then query and cite it.",
+      permissions: {
+        tools: ["db.discover_resources", "db.inspect_resource", "db.query_resource", "db.get_provenance", "analysis.validate"],
+        projectRead: [],
+        projectWrite: [],
+        datasetAccess: "public",
+        networkHosts: [],
+        computeProfiles: [],
+        approvals: [],
+      },
+    }],
+  };
+
+  const compiled = new PromptCompiler().compile(run);
+  assert.match(compiled.prompt, /<selected_skill_bodies encoding="escaped-json">/);
+  assert.match(compiled.prompt, /Call db\.discover_resources, inspect the Resource, then query and cite it\./);
+  assert.match(compiled.prompt, /4b23d46a-ac8a-544f-8492-7f461b76e293:1/);
+});
+
 test("analysis validator blocks common biomedical validity failures", () => {
   const report = validateAnalysis(
     {
@@ -173,10 +202,11 @@ test("tool policy intersects profile, project, provider, and Skill permissions",
       digest: `sha256:${"a".repeat(64)}`,
       name: "discover-shennong-data",
       description: "Discover governed public Resources",
-      permissions: { tools: ["db.discover_resources"], projectRead: [], projectWrite: [], datasetAccess: "public", networkHosts: [], computeProfiles: [], approvals: [] },
+      permissions: { tools: ["db.discover_resources", "db.inspect_resource", "db.query_resource", "db.get_provenance"], projectRead: [], projectWrite: [], datasetAccess: "public", networkHosts: [], computeProfiles: [], approvals: [] },
     }],
   };
   assert.deepEqual(policy.check(projectless, discover), { allowed: true });
+  assert.deepEqual(policy.check(projectless, query), { allowed: true });
 
   const publicProvider = baseRun();
   publicProvider.scope.providerDataPolicy = "public_only";

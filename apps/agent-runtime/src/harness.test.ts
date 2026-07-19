@@ -130,6 +130,7 @@ class RecordingOsClient implements OsInternalClient {
   executions: BackendToolExecutionRequest[] = [];
   finishes: Array<{ result?: RunResult; error?: { code: string; message: string } }> = [];
   verificationDecision: CapabilityDecision = { allowed: true, executionToken: "execution-token-value" };
+  executionHandler?: (request: BackendToolExecutionRequest) => BackendToolExecutionResult;
 
   async bootstrap(_identity: AgentRunIdentity): Promise<RunRequest> { throw new Error("unused"); }
   async persistLatestUserMessage(_input: AgentUserMessageInput): Promise<void> {}
@@ -151,6 +152,7 @@ class RecordingOsClient implements OsInternalClient {
   }
   async executeTool(request: BackendToolExecutionRequest): Promise<BackendToolExecutionResult> {
     this.executions.push(request);
+    if (this.executionHandler) return this.executionHandler(request);
     return {
       content: { jobId: "job-1", status: "completed" },
       evidence: [{
@@ -214,7 +216,8 @@ test("all Runtime execution crosses both OS capability and execution callbacks",
   assert.ok(result.validationReports.some(({ findings }) =>
     findings.some(({ code }) => code === "analysis_validation_missing")));
   assert.equal(osClient.finishes[0]?.result?.stopReason, "validation_failed");
-  assert.equal(osClient.events.at(-1)?.type, "RUN_FINISHED");
+  assert.equal(osClient.events.at(-1)?.type, "RUN_ERROR");
+  assert.equal(osClient.events.at(-1)?.code, "analysis_validation_failed");
 
   const protocolClient = new HttpAgent({
     url: "http://agent-runtime.invalid/v1/agent",
@@ -259,6 +262,95 @@ test("a selected biomedical Skill cannot return an unsupported model-only conclu
   const codes = result.validationReports.flatMap(({ findings }) => findings.map(({ code }) => code));
   assert.ok(codes.includes("analysis_validation_missing"));
   assert.ok(codes.includes("evidence_missing"));
+  assert.equal(osClient.events.at(-1)?.type, "RUN_ERROR");
+  assert.equal(osClient.events.some(({ type }) => type === "RUN_FINISHED"), false);
+});
+
+test("a personal chat can complete a governed public Resource query with Skill guidance", async () => {
+  const osClient = new RecordingOsClient();
+  osClient.executionHandler = (request) => {
+    const evidenceId = request.toolName === "db.query_resource"
+      ? "ev-query"
+      : `ev-${request.toolName.split(".").at(-1)}`;
+    return {
+      content: request.toolName === "db.discover_resources"
+        ? { data: [{ id: "toil", metadata: { cohort: "TCGA GTEx TOIL" } }], discovery: { fallback: "bounded_public_catalog" } }
+        : request.toolName === "db.query_resource"
+          ? { data: { rows: [{ cohort: "TCGA COAD", group: "Primary Tumor", median: 5.24 }, { cohort: "TCGA COAD", group: "Adjacent Normal", median: 4.99 }] } }
+          : { data: { id: "toil", permissions: { visibility: "public" } } },
+      evidence: [{
+        id: evidenceId,
+        kind: request.toolName === "db.query_resource" || request.toolName === "db.discover_resources" ? "query" : "dataset",
+        runId: request.runId,
+        sourceId: "toil",
+        digest: `sha256:${"b".repeat(64)}`,
+      }],
+    };
+  };
+  const run = runRequest();
+  delete run.scope.projectId;
+  run.toolProfile = "global-read";
+  run.messages = [{ role: "user", content: "YTHDF2在结肠癌中是上调的吗？" }];
+  run.context = {
+    selectedSkills: [{
+      id: "zerostwo/discover-shennong-data",
+      version: "1.0.0",
+      digest: `sha256:${"a".repeat(64)}`,
+      loadRef: "4b23d46a-ac8a-544f-8492-7f461b76e293:1",
+      name: "discover-shennong-data",
+      description: "Discover governed public Resources.",
+      content: "Discover broadly, inspect, query the declared operation, get provenance, validate, and cite EvidenceRefs.",
+      permissions: {
+        tools: ["db.discover_resources", "db.inspect_resource", "db.query_resource", "db.get_provenance", "analysis.validate"],
+        projectRead: [],
+        projectWrite: [],
+        datasetAccess: "public",
+        networkHosts: [],
+        computeProfiles: [],
+        approvals: [],
+      },
+    }],
+  };
+  const calls = [
+    { id: "discover", name: "db.discover_resources", arguments: { q: "colon adenocarcinoma expression", limit: 20 } },
+    { id: "inspect", name: "db.inspect_resource", arguments: { resource: "toil" } },
+    { id: "query", name: "db.query_resource", arguments: { resource: "toil", operation: "expression", feature: "YTHDF2", context: { primary_site: "Colon" }, limit: 1000 } },
+    { id: "provenance", name: "db.get_provenance", arguments: { resource: "toil" } },
+    {
+      id: "validate",
+      name: "analysis.validate",
+      arguments: {
+        dataset: { sampleCount: 329, uniqueSampleCount: 329, inferentialUnit: "sample", groupReplicates: { tumor: 288, normal: 41 } },
+        design: { groups: ["tumor", "normal"], contrast: ["tumor", "normal"] },
+        result: { rowCount: 2, effectSizePresent: true, citationIds: ["ev-query"] },
+        evidence: [],
+      },
+    },
+  ];
+  let providerCall = 0;
+  const streamFn: StreamFn = () => {
+    const call = calls[providerCall++];
+    if (call) {
+      return terminal(assistant([{ type: "toolCall", ...call }], "toolUse"));
+    }
+    return terminal(assistant([{
+      type: "text",
+      text: "TOIL中YTHDF2在COAD原发肿瘤的中位表达高于癌旁正常，但差异幅度不大 [evidence:ev-query]。",
+    }], "stop"));
+  };
+
+  const result = await new ShennongAgentHarness({ osClient, streamFn }).run(run);
+
+  assert.equal(result.stopReason, "stop");
+  assert.deepEqual(osClient.executions.map(({ toolName }) => toolName), [
+    "db.discover_resources",
+    "db.inspect_resource",
+    "db.query_resource",
+    "db.get_provenance",
+  ]);
+  assert.equal(osClient.verifications.length, 5);
+  assert.equal(result.validationReports.some(({ status }) => status === "fail"), false);
+  assert.equal(osClient.events.at(-1)?.type, "RUN_FINISHED");
 });
 
 test("OS-issued run evidence plus deterministic validation is required for scientific success", async () => {

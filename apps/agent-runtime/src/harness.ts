@@ -596,7 +596,14 @@ export class ShennongAgentHarness {
         validationReports: executionState.validationReports,
         stopReason: validationFailed ? "validation_failed" : "stop",
       };
-      await emit(mapper.finished(sanitizeUntrusted({ stopReason: result.stopReason, evidenceCount: evidence.length })));
+      if (validationFailed) {
+        await emit(mapper.error(
+          "analysis_validation_failed",
+          "The biomedical answer failed deterministic validation and was not accepted as a completed result.",
+        ));
+      } else {
+        await emit(mapper.finished(sanitizeUntrusted({ stopReason: result.stopReason, evidenceCount: evidence.length })));
+      }
       await this.options.osClient.finishRun(run.runId, result);
       return result;
     } catch (error) {
@@ -696,6 +703,8 @@ export class ShennongAgentHarness {
       if (
         !skill.id || !skill.name || !skill.version ||
         !/^sha256:[a-f0-9]{64}$/.test(skill.digest) ||
+        (skill.loadRef !== undefined && (typeof skill.loadRef !== "string" || skill.loadRef.length > 256)) ||
+        (skill.content !== undefined && (typeof skill.content !== "string" || skill.content.length > 65_536)) ||
         !skill.permissions || !Array.isArray(skill.permissions.tools)
       ) throw new HarnessError("skill_selection_invalid", "A selected Skill is missing trusted version, digest, or permissions.");
     }

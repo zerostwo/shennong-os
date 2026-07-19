@@ -302,6 +302,17 @@ impl AgentRuntimeClient {
             .send()
             .await
     }
+
+    pub async fn healthy(&self) -> bool {
+        let mut target = self.target.clone();
+        target.set_path("/health");
+        self.client
+            .get(target)
+            .timeout(Duration::from_secs(1))
+            .send()
+            .await
+            .is_ok_and(|response| response.status().is_success())
+    }
 }
 
 async fn bounded_bytes(

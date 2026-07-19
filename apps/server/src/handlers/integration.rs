@@ -134,9 +134,14 @@ pub async fn capabilities(State(state): State<AppState>) -> Json<Envelope<Value>
     let ide_access = state.config.ide_public_origin.is_some()
         && state.config.runtime_client.is_some()
         && state.config.runtime_jwt_signer.is_some();
+    let agent_gateway = if let Some(client) = state.config.agent_runtime_client.as_ref() {
+        client.healthy().await
+    } else {
+        false
+    };
     Json(Envelope {
         data: json!({
-            "agent_gateway":true,"thread_storage":true,"run_events":true,
+            "agent_gateway":agent_gateway,"thread_storage":true,"run_events":true,
             "task_plans":true,"skills":true,"memory":true,
             "runtime_jobs":state.config.runtime_client.is_some(),
             "runtime_sessions":state.config.runtime_client.is_some(),
@@ -884,7 +889,9 @@ pub async fn finish_run(
     .await
     .map_err(ApiError::database)?
     .ok_or_else(ApiError::not_found)?;
-    if let Some(content) = result.get("content").and_then(Value::as_str) {
+    if status == "succeeded"
+        && let Some(content) = result.get("content").and_then(Value::as_str)
+    {
         let message_id = Uuid::new_v4();
         sqlx::query(
             "INSERT INTO messages(id,thread_id,role,content_json,status,attachments,metadata,idempotency_key) \
@@ -1102,6 +1109,7 @@ pub async fn execute_tool(
         context.project_id,
         &value.tool_call_id,
         &value.tool_name,
+        &value.arguments,
         &content,
     );
     Ok(Json(Envelope {
@@ -1118,6 +1126,7 @@ fn backend_evidence(
     project_id: Option<Uuid>,
     tool_call_id: &str,
     tool_name: &str,
+    arguments: &Value,
     content: &Value,
 ) -> Vec<Value> {
     if tool_name == "runtime.get_job" {
@@ -1207,9 +1216,14 @@ fn backend_evidence(
     };
     let canonical = serde_json::to_vec(content).expect("tool result is JSON serializable");
     let digest = sha256_hex(canonical);
-    let source_id = ["id", "job_id", "jobId", "resource", "uri", "plan_id"]
-        .iter()
-        .find_map(|key| content.get(key).and_then(Value::as_str))
+    let source_id = arguments
+        .get("resource")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            ["id", "job_id", "jobId", "resource", "uri", "plan_id"]
+                .iter()
+                .find_map(|key| content.get(key).and_then(Value::as_str))
+        })
         .unwrap_or(tool_call_id);
     vec![json!({
         "id":format!("ev-{digest}"),
@@ -1221,7 +1235,8 @@ fn backend_evidence(
         "metadata":{
             "projectId":project_id,
             "tool":tool_name,
-            "issuer":"shennong-os"
+            "issuer":"shennong-os",
+            "operation":arguments.get("operation")
         }
     })]
 }
@@ -1412,10 +1427,8 @@ async fn dispatch_tool(
         | "db.get_provenance" => {
             if let Some(project_id) = context.project_id {
                 super::data_plane::execute_db_tool(state, project_id, name, arguments).await
-            } else if name == "db.discover_resources" {
-                super::data_plane::execute_public_db_discovery(state, arguments).await
             } else {
-                Err(ApiError::invalid("this tool requires a Project"))
+                super::data_plane::execute_public_db_tool(state, name, arguments).await
             }
         }
         "project.list_files" => {
@@ -1707,7 +1720,7 @@ async fn load_run_skills(
     user_id: Uuid,
 ) -> Result<Vec<Value>, ApiError> {
     let rows = sqlx::query(
-        "SELECT s.id,s.name,s.description,s.manifest,sv.version,sv.package_version,sv.content_sha256 \
+        "SELECT s.id,s.name,s.description,s.manifest,sv.version,sv.package_version,sv.content,sv.content_sha256 \
          FROM thread_skills ts JOIN skills s ON s.id=ts.skill_id \
          JOIN skill_versions sv ON sv.skill_id=s.id AND sv.version=ts.skill_version \
          WHERE ts.thread_id=$1 AND ts.enabled=TRUE AND s.lifecycle='active' \
@@ -1732,15 +1745,19 @@ async fn load_run_skills(
                 .and_then(Value::as_str)
                 .map(str::to_owned)
                 .unwrap_or_else(|| row.get::<String, _>("package_version"));
+            let database_id = row.get::<Uuid, _>("id");
+            let database_version = row.get::<i32, _>("version");
             json!({
                 "id":manifest_id,"version":version,
                 "digest":format!("sha256:{}",row.get::<String,_>("content_sha256")),
+                "loadRef":format!("{database_id}:{database_version}"),
                 "name":row.get::<String,_>("name"),"description":row.get::<String,_>("description"),
+                "content":row.get::<String,_>("content"),
                 "permissions":manifest.pointer("/spec/permissions").cloned().unwrap_or_else(||json!({
                     "tools":[],"projectRead":[],"projectWrite":[],"datasetAccess":"public",
                     "networkHosts":[],"computeProfiles":[],"approvals":[]
                 })),
-                "_db_version":row.get::<i32,_>("version"),"_manifest":manifest
+                "_db_version":database_version,"_manifest":manifest
             })
         })
         .collect())
@@ -1769,7 +1786,12 @@ fn allowed_tools(
             let scope_allows = has_project
                 || matches!(
                     definition.name,
-                    "skill.load" | "analysis.validate" | "db.discover_resources"
+                    "skill.load"
+                        | "analysis.validate"
+                        | "db.discover_resources"
+                        | "db.inspect_resource"
+                        | "db.query_resource"
+                        | "db.get_provenance"
                 );
             let role_allows = definition.risk == "read"
                 || user_role == "admin"
@@ -1863,15 +1885,16 @@ async fn load_skill_tool(
     arguments: &Value,
 ) -> Result<Value, ApiError> {
     let reference = arguments
-        .get("skill_version_id")
+        .get("load_ref")
+        .or_else(|| arguments.get("skill_version_id"))
         .and_then(Value::as_str)
-        .ok_or_else(|| ApiError::invalid("skill_version_id is required"))?;
+        .ok_or_else(|| ApiError::invalid("load_ref is required"))?;
     let (id, version) = reference
         .split_once(':')
-        .ok_or_else(|| ApiError::invalid("skill_version_id must be UUID:version"))?;
+        .ok_or_else(|| ApiError::invalid("load_ref must be UUID:version"))?;
     let id: Uuid = id
         .parse()
-        .map_err(|_| ApiError::invalid("skill_version_id contains an invalid UUID"))?;
+        .map_err(|_| ApiError::invalid("load_ref contains an invalid UUID"))?;
     let version: i32 = version
         .parse()
         .map_err(|_| ApiError::invalid("skill version is invalid"))?;
@@ -2606,6 +2629,21 @@ mod tests {
         let personal = allowed_tools("admin", "", false, &skills);
         assert_eq!(personal, vec!["skill.load", "analysis.validate"]);
         assert_eq!(tool_profile("", "admin", false), "global-read");
+
+        let discovery = vec![json!({"permissions":{"tools":[
+            "db.discover_resources","db.inspect_resource","db.query_resource","db.get_provenance"
+        ]}})];
+        assert_eq!(
+            allowed_tools("user", "", false, &discovery),
+            vec![
+                "skill.load",
+                "db.discover_resources",
+                "db.inspect_resource",
+                "db.query_resource",
+                "db.get_provenance",
+                "analysis.validate"
+            ]
+        );
     }
 
     #[test]
@@ -2617,13 +2655,15 @@ mod tests {
             Some(project_id),
             "tool-query",
             "db.query_resource",
-            &json!({"resource":"cohort-a","rows":[{"value":1}]}),
+            &json!({"resource":"cohort-a","operation":"expression"}),
+            &json!({"data":{"rows":[{"value":1}]}}),
         );
         assert_eq!(query.len(), 1);
         assert_eq!(query[0]["runId"], run_id.to_string());
         assert_eq!(query[0]["sourceId"], "cohort-a");
         assert_eq!(query[0]["kind"], "query");
         assert_eq!(query[0]["metadata"]["issuer"], "shennong-os");
+        assert_eq!(query[0]["metadata"]["operation"], "expression");
         assert!(
             query[0]["digest"]
                 .as_str()
@@ -2635,6 +2675,7 @@ mod tests {
                 Some(project_id),
                 "tool-job",
                 "runtime.get_job",
+                &json!({}),
                 &json!({"id":Uuid::new_v4(),"status":"running"}),
             )
             .is_empty()
@@ -2646,6 +2687,7 @@ mod tests {
             Some(project_id),
             "tool-job-complete",
             "runtime.get_job",
+            &json!({}),
             &json!({
                 "id":job_id,
                 "state":"succeeded",
@@ -2667,6 +2709,7 @@ mod tests {
                 Some(project_id),
                 "tool-plan",
                 "plan.propose",
+                &json!({}),
                 &json!({"id":Uuid::new_v4()}),
             )
             .is_empty()

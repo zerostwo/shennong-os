@@ -69,8 +69,10 @@ export interface SkillSelection {
   id: string;
   version: string;
   digest: string;
+  loadRef?: string;
   name: string;
   description: string;
+  content?: string;
   permissions: SkillPermissions;
 }
 
