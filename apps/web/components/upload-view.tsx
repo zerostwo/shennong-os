@@ -53,7 +53,8 @@ export function UploadView({ projectId }: { projectId: string }) {
         queryClient.invalidateQueries({ queryKey: ["projects", projectId, "resources"] }),
       ]);
       const prompt = buildProjectUploadPrompt(result, background);
-      router.push(`/projects/${encodeURIComponent(projectId)}/chat?handoff=${encodeURIComponent(prompt)}`);
+      window.sessionStorage.setItem(`shennong.project-handoff:${projectId}`, prompt);
+      router.push(`/projects/${encodeURIComponent(projectId)}/chat`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Upload failed");
     } finally {

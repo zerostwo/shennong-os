@@ -19,6 +19,7 @@ import type {
 class MissingProviderClient implements OsInternalClient {
   bootstrapIdentity?: AgentRunIdentity;
   persisted?: AgentUserMessageInput;
+  finishedError: { code: string; message: string } | undefined;
 
   async bootstrap(identity: AgentRunIdentity): Promise<RunRequest> {
     this.bootstrapIdentity = identity;
@@ -44,7 +45,13 @@ class MissingProviderClient implements OsInternalClient {
 
   async recordRunMetadata(_metadata: PersistedRunMetadata): Promise<void> {}
   async appendEvent(_runId: string, _event: AgUiEvent): Promise<string | undefined> { return undefined; }
-  async finishRun(_runId: string, _result: RunResult | undefined): Promise<void> {}
+  async finishRun(
+    _runId: string,
+    _result: RunResult | undefined,
+    error?: { code: string; message: string },
+  ): Promise<void> {
+    this.finishedError = error;
+  }
   async verifyCapability(_request: CapabilityVerificationRequest): Promise<CapabilityDecision> {
     throw new Error("unexpected_capability_check");
   }
@@ -161,6 +168,10 @@ test("server ignores client tools and emits one structured RUN_ERROR when provid
     message: { role: "user", content: "Analyze this." },
   });
   assert.deepEqual(client.bootstrapIdentity, { threadId: "thread-1", runId: "run-1" });
+  assert.deepEqual(client.finishedError, {
+    code: "provider_unconfigured",
+    message: "No model provider is configured for this run.",
+  });
   assert.equal("tools" in (client.bootstrapIdentity as object), false);
   assert.equal("tools" in (client.persisted as object), false);
 });

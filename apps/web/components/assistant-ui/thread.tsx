@@ -100,6 +100,14 @@ function ShennongMessage({ message }: { message: MessageState }) {
   const reasoning = message.content.map(reasoningFromPart).join("");
   const { text, clarification } = extractClarification(rawText);
   const tools = message.content.filter((part): part is Extract<typeof part, { type: "tool-call" }> => part.type === "tool-call");
+  const failed = message.status?.type === "incomplete" && message.status.reason === "error";
+  const failureMessage = failed
+    ? message.status.error instanceof Error
+      ? message.status.error.message
+      : typeof message.status.error === "string"
+        ? message.status.error
+        : "The Agent could not complete this response. Check the model connection and try again."
+    : "";
   return (
     <MessagePrimitive.Root className={`aui-message ${message.role}`}>
       <div className="aui-message-body">
@@ -107,6 +115,7 @@ function ShennongMessage({ message }: { message: MessageState }) {
         {text ? <ChatMarkdown>{text}</ChatMarkdown> : null}
         {tools.map((part) => <ToolCard key={part.toolCallId} part={part} />)}
         {clarification ? <ClarificationCard value={clarification} /> : null}
+        {failed ? <div className="aui-message-error" role="alert"><ShieldAlert /><span><strong>Agent run failed</strong>{failureMessage}</span></div> : null}
       </div>
     </MessagePrimitive.Root>
   );
@@ -293,8 +302,16 @@ function ComposerPrefill({ prompt }: { prompt?: string }) {
   const applied = useRef("");
   useEffect(() => {
     if (!prompt || applied.current === prompt) return;
-    if (!runtime.thread.composer.getState().text.trim()) runtime.thread.composer.setText(prompt);
+    const apply = () => {
+      if (!runtime.thread.composer.getState().text.trim()) runtime.thread.composer.setText(prompt);
+    };
+    apply();
+    // A newly mounted remote-history adapter can finish after this effect and
+    // replace the draft composer state. Re-apply once after that initialization
+    // boundary, but never overwrite text the user has started editing.
+    const timer = window.setTimeout(apply, 250);
     applied.current = prompt;
+    return () => window.clearTimeout(timer);
   }, [prompt, runtime]);
   return null;
 }
@@ -374,8 +391,8 @@ export function ShennongThread({ projectName, projectId, initialPrompt }: { proj
               {projectId ? <ProjectFileUploadButton projectId={projectId} /> : <ComposerPrimitive.AddAttachment className="aui-composer-tool" aria-label="Attach a file" title="Attach a text file or image"><Paperclip /></ComposerPrimitive.AddAttachment>}
               <span className="aui-composer-hint"><AtSign /> mention <span>/</span> commands</span>
               <span className="aui-composer-note">Code runs in the isolated Runtime with approval.</span>
-              <ComposerPrimitive.Send className="aui-send" aria-label="Send message"><ArrowUp /></ComposerPrimitive.Send>
-              <ComposerPrimitive.Cancel className="aui-cancel" aria-label="Stop generation"><CircleStop /></ComposerPrimitive.Cancel>
+              <ThreadPrimitive.If running={false}><ComposerPrimitive.Send className="aui-send" aria-label="Send message"><ArrowUp /></ComposerPrimitive.Send></ThreadPrimitive.If>
+              <ThreadPrimitive.If running><ComposerPrimitive.Cancel className="aui-cancel" aria-label="Stop generation"><CircleStop /></ComposerPrimitive.Cancel></ThreadPrimitive.If>
             </div>
           </ComposerPrimitive.Root>
         </ThreadPrimitive.ViewportFooter>

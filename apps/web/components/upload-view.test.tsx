@@ -24,7 +24,8 @@ describe("UploadView", () => {
     fireEvent.change(screen.getByLabelText("Optional background"), { target: { value: "PBMC pilot" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue in Project chat" }));
     await waitFor(() => expect(mocks.registerProjectFiles).toHaveBeenCalledWith("project-1", [file], "PBMC pilot"));
-    expect(mocks.push).toHaveBeenCalledWith("/projects/project-1/chat?handoff=Inspect%20project%3A%2F%2Fcurrent%2Fresources%2Fresource-1");
+    expect(window.sessionStorage.getItem("shennong.project-handoff:project-1")).toBe("Inspect project://current/resources/resource-1");
+    expect(mocks.push).toHaveBeenCalledWith("/projects/project-1/chat");
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["projects", "project-1", "context-pack"] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["projects", "project-1", "resources"] });
   });

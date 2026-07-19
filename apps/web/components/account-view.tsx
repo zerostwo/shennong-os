@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { KeyRound, LogOut } from "lucide-react";
 import { listSessions, revokeSession, type JsonRecord } from "@/lib/api/adapter";
+import { formatDateTime } from "@/lib/format-date";
 import { SectionHeader } from "./app-shell";
 
 type Page = "profile" | "security" | "sessions" | "login-history";
@@ -45,9 +46,9 @@ function Sessions() {
               <tr key={text(row.token_id)}>
                 <td><strong>{text(row.user_agent)}</strong></td>
                 <td>{text(row.ip_address)}</td>
-                <td>{text(row.created_at)}</td>
-                <td>{text(row.last_seen_at)}</td>
-                <td>{text(row.expires_at)}</td>
+                <td>{formatDateTime(row.created_at)}</td>
+                <td>{formatDateTime(row.last_seen_at)}</td>
+                <td>{formatDateTime(row.expires_at)}</td>
                 <td><button className="danger-button compact" onClick={() => void revoke(text(row.token_id))}><LogOut />Revoke</button></td>
               </tr>
             ))}

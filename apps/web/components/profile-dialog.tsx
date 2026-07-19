@@ -60,7 +60,7 @@ export function ProfileDialog({ open, session, onOpenChange, onSaved }: { open: 
             <input ref={fileInput} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseAvatar} />
           </div>
           <label>Display name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoFocus required maxLength={128} /></label>
-          <label htmlFor="profile-username">Username<span className="profile-username-input"><b>@</b><input id="profile-username" aria-label="Username" value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())} required minLength={3} maxLength={32} pattern="[a-z0-9][a-z0-9._-]{2,31}" /></span></label>
+          <label htmlFor="profile-username">Username<span className="profile-username-input"><b>@</b><input id="profile-username" aria-label="Username" value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())} required minLength={3} maxLength={32} pattern={"[a-z0-9][a-z0-9._\\-]{2,31}"} /></span></label>
           {error ? <div className="settings-error" role="alert">{error}</div> : null}
           <div className="profile-dialog-actions"><button type="button" className="settings-secondary" onClick={() => onOpenChange(false)}>Cancel</button><button className="settings-primary" disabled={busy}>{busy ? "Saving…" : "Save profile"}</button></div>
         </form>

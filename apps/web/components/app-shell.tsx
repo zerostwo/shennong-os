@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  ArchiveRestore,
   ArrowLeft,
   Beaker,
   Bot,
@@ -71,6 +72,7 @@ const adminGroups = [
     ["Model providers", "/admin/models", Bot],
     ["Resource providers", "/admin/providers", Database],
     ["System health", "/admin/monitoring", Server],
+    ["Backups", "/admin/backups", ArchiveRestore],
   ] },
   { label: "GOVERNANCE", items: [
     ["Audit events", "/admin/audit", Activity],
@@ -244,7 +246,7 @@ function AdminFooter({ session }: { session: SessionRecord | null }) {
   return (
     <div className="admin-footer">
       <Link href="/" className="return-portal"><ArrowLeft />Return to Agent Chat</Link>
-      {session?.authenticated ? <div className="admin-user"><span className="avatar avatar-dark">{session.user_id.slice(0, 1).toUpperCase()}</span><span><strong>{session.user_id}</strong><small>{session.role}</small></span></div> : <Link className="primary-button sign-in-button" href="/auth/sign-in"><KeyRound />Sign in</Link>}
+      {session?.authenticated ? <div className="admin-user"><ProfileAvatar session={session} /><span><strong>{session.display_name || session.username || session.user_id}</strong><small>{session.username ? `@${session.username}` : session.role}</small></span></div> : session === null ? <div className="admin-user-loading" aria-label="Loading account" /> : <Link className="primary-button sign-in-button" href="/auth/sign-in"><KeyRound />Sign in</Link>}
     </div>
   );
 }

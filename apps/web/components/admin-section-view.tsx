@@ -125,12 +125,20 @@ function Monitoring({ health, dependencies }: { health: JsonRecord; dependencies
 }
 
 function Audit({ rows }: { rows: JsonRecord[] }) {
-  const [query, setQuery] = useState(""); const filtered = useSearch(rows, query);
-  return <section className="admin-panel"><PanelHeading title="Governance trail" description="Up to 100 recent events returned by the audit API." /><TableSearch value={query} onChange={setQuery} label="Search audit events" /><AuditRows rows={filtered} /></section>;
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const filtered = useSearch(rows, query);
+  const pageSize = 25;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  useEffect(() => setPage(0), [query]);
+  const visible = filtered.slice(page * pageSize, (page + 1) * pageSize);
+  const start = filtered.length ? page * pageSize + 1 : 0;
+  const end = Math.min((page + 1) * pageSize, filtered.length);
+  return <section className="admin-panel"><PanelHeading title="Governance trail" description="Up to 100 recent events returned by the audit API." /><TableSearch value={query} onChange={setQuery} label="Search audit events" /><AuditRows rows={visible} /><div className="admin-table-pagination"><span>{start}-{end} of {filtered.length}</span><div><button className="outline-button" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>Previous</button><span>Page {page + 1} of {pageCount}</span><button className="outline-button" disabled={page + 1 >= pageCount} onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}>Next</button></div></div></section>;
 }
 
 function AuditRows({ rows, compact = false }: { rows: JsonRecord[]; compact?: boolean }) {
-  return <DataTable headings={compact ? ["Time", "Action", "Target"] : ["Time", "Actor", "Action", "Target", "Request", "Details"]} empty="No audit events were returned.">{rows.map((row, index) => <tr key={String(row.id ?? index)}><td>{formatDate(row.created_at)}</td>{compact ? null : <td>{display(row.actor_user_id)}</td>}<td><strong>{display(row.action)}</strong></td><td>{display(row.target_type)}<small>{display(row.target_id)}</small></td>{compact ? null : <><td>{display(row.request_id)}</td><td className="admin-structured-cell"><StructuredValue value={row.details ?? {}} emptyLabel="No details" /></td></>}</tr>)}</DataTable>;
+  return <DataTable headings={compact ? ["Time", "Action", "Target"] : ["Time", "Actor", "Action", "Target", "Request", "Details"]} empty="No audit events were returned.">{rows.map((row, index) => <tr key={String(row.id ?? index)}><td>{formatDate(row.created_at)}</td>{compact ? null : <td>{display(row.actor_user_id)}</td>}<td><strong>{display(row.action)}</strong></td><td>{display(row.target_type)}<small>{display(row.target_id)}</small></td>{compact ? null : <><td>{display(row.request_id)}</td><td className="admin-structured-cell"><details><summary>View details</summary><StructuredValue value={row.details ?? {}} emptyLabel="No details" /></details></td></>}</tr>)}</DataTable>;
 }
 
 function Security({ policy, reload }: { policy: JsonRecord; reload: () => Promise<void> }) {

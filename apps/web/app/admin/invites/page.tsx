@@ -49,14 +49,14 @@ export default function InvitationsPage() {
       <div className="admin-page">
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         {plaintextCode ? <section className="invite-once"><TicketCheck /><div><strong>Copy this code now</strong><p>Only its cryptographic digest is stored. It will not be shown again.</p><code>{plaintextCode}</code></div><button onClick={() => void navigator.clipboard.writeText(plaintextCode).then(() => setCopied(true))}>{copied ? <Check /> : <Copy />}{copied ? "Copied" : "Copy"}</button></section> : null}
-        <section className="panel"><h2>Create invitation</h2><form className="invite-form" onSubmit={(event) => void create(event)}>
+        <section className="admin-panel invite-panel"><header className="admin-panel-heading"><div><h2>Create invitation</h2><p>Issue a scoped, expiring registration code.</p></div></header><form className="invite-form" onSubmit={(event) => void create(event)}>
           <label>Email constraint (optional)<input name="email_constraint" type="email" placeholder="researcher@example.org" /></label>
           <label>Maximum uses<input name="max_uses" type="number" min="1" max="100" defaultValue="1" required /></label>
           <label>Valid days<input name="duration_days" type="number" min="1" max="90" defaultValue="7" required /></label>
           <label>Note<input name="note" maxLength={240} /></label>
           <button className="primary-button" disabled={busy}>{busy ? "Creating…" : "Create invitation"}</button>
         </form></section>
-        <section className="panel"><h2>Issued invitations</h2><div className="table-wrap"><table><thead><tr><th>Prefix</th><th>Email</th><th>Uses</th><th>Expires</th><th>Status</th><th /></tr></thead><tbody>
+        <section className="admin-panel invite-panel"><header className="admin-panel-heading"><div><h2>Issued invitations</h2><p>Revoke unused codes or review their status.</p></div></header><div className="admin-table-wrap"><table className="admin-data-table"><thead><tr><th>Prefix</th><th>Email</th><th>Uses</th><th>Expires</th><th>Status</th><th /></tr></thead><tbody>
           {invites.map((invite) => <tr key={invite.id}><td><code>{invite.codePrefix}…</code></td><td>{invite.emailConstraint ?? "Any invited user"}</td><td>{invite.useCount} / {invite.maxUses}</td><td>{invite.expiresAt ? new Date(invite.expiresAt).toLocaleString() : "Not available"}</td><td>{invite.revokedAt ? "Revoked" : new Date(invite.expiresAt).getTime() < Date.now() ? "Expired" : "Active"}</td><td>{!invite.revokedAt ? <button className="icon-button" aria-label="Revoke invitation" onClick={() => void revokeRegistrationInvite(invite.id).then(load)}><Trash2 /></button> : null}</td></tr>)}
           {!invites.length ? <tr><td colSpan={6}>No invitations have been issued.</td></tr> : null}
         </tbody></table></div></section>

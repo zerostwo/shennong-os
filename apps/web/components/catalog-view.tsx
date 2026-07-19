@@ -21,6 +21,7 @@ import {
 import { createColumnHelper, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { parseAsString, useQueryState } from "nuqs";
 import type { ResourceRecord } from "@/lib/api/adapter";
+import { formatDateTime } from "@/lib/format-date";
 import { useResources } from "@/features/catalog/use-resources";
 import { AppShell, TinyBadge, TopBar } from "./app-shell";
 import { ResourceDrawer } from "./resource-drawer";
@@ -210,7 +211,7 @@ function ResourceRow({ resource, selected, checked, onCheck, onOpen, onNotice }:
       <td><div className="name-cell"><span className={`row-type-icon ${resource.kind.toLowerCase()}`}>{resource.kind === "Resource" ? <Globe2 /> : <FileBox />}</span><span><strong>{resource.name}</strong><small className="mono">{resource.id}</small></span></div></td>
       <td>{resource.kind}</td>
       <td><TinyBadge tone={resource.visibility === "Public" ? "blue" : "amber"}>{resource.visibility === "Public" ? <Globe2 /> : <LockKeyhole />}{resource.visibility}</TinyBadge></td>
-      <td>{resource.backend}</td><td>{resource.updated}</td><td>{resource.usage}</td>
+      <td>{resource.backend}</td><td>{formatDateTime(resource.updated)}</td><td>{resource.usage}</td>
       <td className="row-action-cell">
         <button className="row-action" aria-label={`Actions for ${resource.name}`} aria-expanded={menuOpen} onClick={(event) => { event.stopPropagation(); setMenuOpen((value) => !value); }}><MoreHorizontal /></button>
         {menuOpen && <div className="row-action-menu" onClick={(event) => event.stopPropagation()}>

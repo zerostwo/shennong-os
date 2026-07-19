@@ -43,8 +43,20 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const body = record(payload);
-    const error = new Error(String(body.message ?? body.error ?? `Request failed (${response.status})`));
-    Object.assign(error, { status: response.status, code: body.code });
+    const nested = record(body.error);
+    const message = typeof nested.message === "string"
+      ? nested.message
+      : typeof body.message === "string"
+        ? body.message
+        : typeof body.error === "string"
+          ? body.error
+          : `Request failed (${response.status})`;
+    const error = new Error(message);
+    Object.assign(error, {
+      status: response.status,
+      code: typeof nested.code === "string" ? nested.code : body.code,
+      requestId: nested.request_id ?? body.request_id,
+    });
     throw error;
   }
   const body = record(payload);

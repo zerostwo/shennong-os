@@ -75,6 +75,17 @@ The format is based on [Keep a Changelog 1.1.0], and this project adheres to
   controls, reorganize Settings, anchor resource drawers, and replace raw JSON
   records with recursive structured values across product surfaces.
 
+### Fixed
+
+- Allow visitor chat discovery without protected runtime requests, create
+  canonical UUID threads only on first send, preserve visible AG-UI failures
+  across the first history update, and persist preflight failures as terminal
+  failed Runs instead of leaving them queued.
+- Correct mobile shell spacing and navigation behavior, humanize timestamps,
+  paginate administrator audit events, standardize invitations and compute
+  states, and prevent the mobile navigation trigger from covering scrolled
+  content.
+
 ### Security
 
 - Prevent administrators from disabling or demoting the final active

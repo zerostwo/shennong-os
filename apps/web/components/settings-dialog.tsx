@@ -205,6 +205,7 @@ function ProviderForm({ provider, onCancel, onSaved }: { provider: AiProviderRec
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!model.trim()) { setError("Enter the model ID exposed by this provider."); return; }
+    if (type !== "ollama" && !apiKey.trim() && !provider?.hasApiKey) { setError("Enter an API key or local access token for this provider."); return; }
     setBusy(true);
     setError("");
     const form = new FormData(event.currentTarget);
@@ -241,7 +242,7 @@ function ProviderForm({ provider, onCancel, onSaved }: { provider: AiProviderRec
       <div className="provider-form-heading"><h3>{provider ? "Edit model connection" : "Add model connection"}</h3><button type="button" className="settings-text-button" onClick={onCancel}>Cancel</button></div>
       <div className="provider-form-grid">
         <label className="wide">Provider<select value={type} onChange={(event) => changeType(event.target.value as AiProviderRecord["providerType"])} autoFocus disabled={Boolean(provider)}><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="ollama">Ollama</option><option value="llama-cpp">llama.cpp</option><option value="openai-compatible">OpenAI-compatible</option></select></label>
-        {type !== "ollama" ? <label className="wide">API key<input value={apiKey} onChange={(event) => setApiKey(event.target.value)} type="password" autoComplete="off" placeholder={provider?.hasApiKey ? "Leave blank to use the saved key" : "Paste API key"} /></label> : null}
+        {type !== "ollama" ? <label className="wide">API key<input value={apiKey} onChange={(event) => setApiKey(event.target.value)} type="password" autoComplete="off" required={!provider?.hasApiKey} placeholder={provider?.hasApiKey ? "Leave blank to use the saved key" : type === "llama-cpp" ? "Enter the access token configured by your local server" : "Paste API key"} />{type === "llama-cpp" ? <small>Use the access token configured by your local llama.cpp server.</small> : null}</label> : null}
         {type === "openai-compatible" ? <label className="wide">Base URL<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://provider.example/v1" required /></label> : null}
         <label className="wide">Model ID<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="e.g. gpt-5-mini" required /></label>
         <label className="wide">Data access<select value={dataPolicy} onChange={(event) => setDataPolicy(event.target.value as AiProviderRecord["dataPolicy"])}><option value="public_only">Public Resources only</option><option value="allow_private">Allow private data</option></select></label>

@@ -69,7 +69,7 @@ export function ComputeView({ projectId }: { projectId?: string }) {
 
   const content = (
     <div className="compute-page">
-      <header className="page-header"><div><h1>Compute</h1><p>Isolated analysis jobs and interactive project workspaces.</p></div><button className="outline-button" onClick={() => void load()}><RefreshCw />Refresh</button></header>
+      {projectId ? <div className="compute-project-toolbar"><span>Runtime state for this Project</span><button className="outline-button" onClick={() => void load()}><RefreshCw />Refresh</button></div> : <header className="page-header"><div><h1>Compute</h1><p>Isolated analysis jobs and interactive project workspaces.</p></div><button className="outline-button" onClick={() => void load()}><RefreshCw />Refresh</button></header>}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       {projectId ? <section className="compute-launchers">
         <button onClick={() => void start("rstudio")} disabled={Boolean(busy)}><SquareTerminal /><span><strong>RStudio Server</strong><small>Open the project in an isolated R workspace.</small></span>{busy === "rstudio" ? <LoaderCircle className="spin" /> : null}</button>
@@ -81,12 +81,12 @@ export function ComputeView({ projectId }: { projectId?: string }) {
           const opening = busy === `open:${session.id}`;
           return <article key={session.id}><span className={`status-dot ${session.status}`} /><Code2 /><div><strong>{label}</strong><small>{session.status} · {session.expiresAt ? `expires ${new Date(session.expiresAt).toLocaleString()}` : "managed lifetime"}</small></div>{session.status === "running" ? <button className="outline-button" aria-label={`Open ${label}`} disabled={Boolean(busy)} onClick={() => void openSession(session)}>{opening ? "Opening…" : "Open"} {opening ? <LoaderCircle className="spin" /> : <ExternalLink />}</button> : null}{session.status === "running" ? <button className="icon-button" aria-label={`Stop ${label}`} onClick={() => void stopRuntimeSession(session.id).then(load)}><OctagonX /></button> : null}</article>;
         })}
-        {!sessions.length && !loading ? <p>No interactive sessions.</p> : null}
+        {!sessions.length && !loading ? <div className="compute-empty"><Code2 /><span><strong>No interactive sessions</strong><small>Start RStudio Server or JupyterLab when you need an isolated workspace.</small></span></div> : null}
       </div></section> : null}
       <section className="panel"><h2>Analysis jobs</h2><div className="compute-list">
         {jobs.map((job) => <article key={job.id}><span className={`status-dot ${job.status}`} /><Clock3 /><div><strong>{job.id}</strong><small>{job.status} · {job.workerProfile}{job.exitCode !== undefined ? ` · exit ${job.exitCode}` : ""}</small></div>{["queued", "preparing", "running"].includes(job.status) ? <button className="outline-button" onClick={() => void cancelRuntimeJob(job.id).then(load)}>Cancel</button> : null}</article>)}
-        {!jobs.length && !loading ? <p>No analysis jobs.</p> : null}
-        {loading ? <p><LoaderCircle className="spin" />Loading compute state…</p> : null}
+        {!jobs.length && !loading ? <div className="compute-empty"><Clock3 /><span><strong>No analysis jobs</strong><small>Agent-launched analyses will appear here with their persisted runtime state.</small></span></div> : null}
+        {loading ? <div className="compute-empty"><LoaderCircle className="spin" /><span><strong>Loading compute state…</strong></span></div> : null}
       </div></section>
     </div>
   );

@@ -11,7 +11,7 @@ import {
 } from "@assistant-ui/react";
 import { HttpAgent } from "@ag-ui/client";
 import { useAgUiRuntime } from "@assistant-ui/react-ag-ui";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteOsThread,
@@ -41,14 +41,41 @@ type RuntimeContextValue = {
 
 const RuntimeContext = createContext<RuntimeContextValue | null>(null);
 
-function runtimeErrorMessage(reason: unknown, fallback: string) {
-  if (reason instanceof Error && typeof reason.message === "string" && reason.message !== "[object Object]") return reason.message;
-  if (reason && typeof reason === "object" && "message" in reason && typeof reason.message === "string" && reason.message !== "[object Object]") return reason.message;
+function runtimeErrorMessage(reason: unknown, fallback: string): string {
+  if (typeof reason === "string" && reason.trim() && reason !== "[object Object]") return reason;
+  if (reason instanceof Error && reason.message && reason.message !== "[object Object]") return reason.message;
+  if (reason && typeof reason === "object") {
+    const value = reason as Record<string, unknown>;
+    for (const candidate of [value.message, value.error, value.reason, value.cause]) {
+      const message = runtimeErrorMessage(candidate, "");
+      if (message) return message;
+    }
+  }
   return fallback;
 }
 class ShennongHttpAgent extends HttpAgent {
-  override runAgent(...[parameters, subscriber]: Parameters<HttpAgent["runAgent"]>) {
-    return super.runAgent({ ...parameters, runId: randomUuid() }, subscriber);
+  constructor(
+    options: ConstructorParameters<typeof HttpAgent>[0],
+    private readonly reportError: (reason: unknown) => void,
+    private readonly settled: (threadId: string) => Promise<void>,
+  ) {
+    super(options);
+    if (typeof this.subscribe === "function") {
+      this.subscribe({
+        onRunErrorEvent: ({ event }) => this.reportError(event.message),
+      });
+    }
+  }
+
+  override async runAgent(...[parameters, subscriber]: Parameters<HttpAgent["runAgent"]>) {
+    try {
+      return await super.runAgent({ ...parameters, runId: randomUuid() }, subscriber);
+    } catch (reason) {
+      this.reportError(reason);
+      throw reason;
+    } finally {
+      await this.settled(this.threadId);
+    }
   }
 }
 
@@ -72,7 +99,6 @@ export function ShennongRuntimeProvider({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [selectedThreadId, setSelectedThreadId] = useState(initialThreadId);
   const [draftGeneration, setDraftGeneration] = useState(0);
   const [threads, setThreads] = useState<OsThread[]>([]);
@@ -99,18 +125,41 @@ export function ShennongRuntimeProvider({
   const agent = useMemo(() => {
     // A new unsaved draft needs a fresh AG-UI agent even though it has no thread id yet.
     void draftGeneration;
-    return new ShennongHttpAgent({
-      url: "/api/agent",
-      threadId: selectedThreadId,
-      headers: {
-        "x-shennong-ui": "assistant-ui",
-        ...(projectId ? { "x-shennong-project-id": projectId } : {}),
-        ...(providerId ? { "x-shennong-provider-id": providerId } : {}),
-        "x-shennong-thinking-level": thinkingLevel,
+    return new ShennongHttpAgent(
+      {
+        url: "/api/agent",
+        threadId: selectedThreadId,
+        headers: {
+          "x-shennong-ui": "assistant-ui",
+          ...(projectId ? { "x-shennong-project-id": projectId } : {}),
+          ...(providerId ? { "x-shennong-provider-id": providerId } : {}),
+          "x-shennong-thinking-level": thinkingLevel,
+        },
       },
-    });
-  }, [draftGeneration, projectId, providerId, selectedThreadId, thinkingLevel]);
+      (reason) => setRuntimeError(runtimeErrorMessage(reason, "The Agent request failed")),
+      async (threadId) => {
+        try {
+          const items = await listOsThreads(projectId);
+          setThreads(items);
+          setIsLoadingThreads(false);
+          if (!initialThreadId && items.some((item) => item.id === threadId)) {
+            setSelectedThreadId(threadId);
+            // Keep the live AG-UI runtime mounted so a RUN_ERROR or the final
+            // assistant state is not discarded when the first run creates its
+            // durable thread. Next.js observes native history updates without
+            // forcing this provider through a server-navigation remount.
+            window.history.replaceState(window.history.state, "", threadPath(threadId, projectId));
+          }
+        } catch (reason) {
+          setRuntimeError(runtimeErrorMessage(reason, "Conversations could not be refreshed"));
+        }
+      },
+    );
+  }, [draftGeneration, initialThreadId, projectId, providerId, selectedThreadId, thinkingLevel]);
   const activeThreadId = agent.threadId;
+  const hasPersistedThread = Boolean(
+    initialThreadId || threads.some((thread) => thread.id === activeThreadId),
+  );
 
   const refreshThreads = useCallback(async () => {
     setIsLoadingThreads(true);
@@ -144,6 +193,7 @@ export function ShennongRuntimeProvider({
 
   const history = useMemo<ThreadHistoryAdapter>(() => ({
     async load() {
+      if (!initialThreadId) return ExportedMessageRepository.fromArray([]);
       const loaded = await loadThread(activeThreadId);
       return {
         ...ExportedMessageRepository.fromArray(loaded.messages),
@@ -156,12 +206,11 @@ export function ShennongRuntimeProvider({
       // Browser history may persist the user's optimistic entry before a run.
       // Assistant/tool messages are authoritative OS outputs (finish callback
       // or durable event replay) and must never be written with user authority.
-      if (message.role === "user") {
+      if (initialThreadId && message.role === "user") {
         await persistAssistantMessage(activeThreadId, message).catch((error) => {
           if ((error as { status?: number }).status !== 409) throw error;
         });
       }
-      if (!initialThreadId && pathname === "/") router.replace(threadPath(activeThreadId, projectId));
       window.setTimeout(() => void refreshThreads(), 350);
     },
     async *resume(options) {
@@ -177,7 +226,7 @@ export function ShennongRuntimeProvider({
         window.setTimeout(() => void refreshThreads(), 350);
       }
     },
-  }), [activeThreadId, initialThreadId, loadThread, pathname, projectId, refreshThreads, router]);
+  }), [activeThreadId, initialThreadId, loadThread, refreshThreads]);
 
   const threadList = useMemo(() => ({
     threadId: activeThreadId,
@@ -243,14 +292,14 @@ export function ShennongRuntimeProvider({
 
   const setProviderId = useCallback(async (nextProviderId: string) => {
     setProviderIdState(nextProviderId);
-    if (initialThreadId) {
+    if (hasPersistedThread) {
       await updateOsThread(activeThreadId, { provider_id: nextProviderId });
       await refreshThreads();
     }
-  }, [activeThreadId, initialThreadId, refreshThreads]);
+  }, [activeThreadId, hasPersistedThread, refreshThreads]);
 
   return (
-    <RuntimeContext.Provider value={{ activeThreadId, hasPersistedThread: Boolean(initialThreadId), projectId, providers, providerId, setProviderId, thinkingLevel, setThinkingLevel, refreshThreads }}>
+    <RuntimeContext.Provider value={{ activeThreadId, hasPersistedThread, projectId, providers, providerId, setProviderId, thinkingLevel, setThinkingLevel, refreshThreads }}>
       <AssistantRuntimeProvider runtime={runtime}>
         {runtimeError ? <div className="runtime-error-banner" role="alert">{runtimeError}<button onClick={() => setRuntimeError("")} aria-label="Dismiss">×</button></div> : null}
         {children}

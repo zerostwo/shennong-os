@@ -381,10 +381,15 @@ pub async fn session(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Envelope<Value>>, ApiError> {
-    let user = authenticate(&state, &headers, false).await?;
-    Ok(Json(Envelope {
-        data: json!({"authenticated":true,"user":user}),
-    }))
+    match authenticate(&state, &headers, false).await {
+        Ok(user) => Ok(Json(Envelope {
+            data: json!({"authenticated":true,"user":user}),
+        })),
+        Err(error) if error.status == StatusCode::UNAUTHORIZED => Ok(Json(Envelope {
+            data: json!({"authenticated":false}),
+        })),
+        Err(error) => Err(error),
+    }
 }
 
 pub async fn update_profile(

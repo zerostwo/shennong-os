@@ -205,8 +205,16 @@ export function createAgentRuntimeServer(options: AgentRuntimeServerOptions) {
       const code = errorCode(error);
       const message = error instanceof Error ? error.message : "Agent runtime failed.";
       // Bootstrap and preflight failures have not passed through the harness event sink.
-      if (!harnessErrorEmitted && !response.writableEnded && !response.destroyed) {
-        response.write(encodeSse(directMapper.error(code, message)));
+      if (!harnessErrorEmitted) {
+        try {
+          await options.osClient.finishRun(input.runId, undefined, { code, message });
+        } catch {
+          // The browser still needs the canonical AG-UI failure even when the
+          // durable callback itself is unavailable.
+        }
+        if (!response.writableEnded && !response.destroyed) {
+          response.write(encodeSse(directMapper.error(code, message)));
+        }
       }
     } finally {
       if (!response.writableEnded) response.end();

@@ -872,7 +872,8 @@ pub async fn finish_run(
     let mut tx = state.pool.begin().await.map_err(ApiError::database)?;
     let run = sqlx::query(
         "UPDATE runs SET status=$2,output=$3,error=$4,capability_token_hash=NULL, \
-         capability_expires_at=NULL,finished_at=NOW(),updated_at=NOW() WHERE id=$1 AND status='running' \
+         capability_expires_at=NULL,finished_at=NOW(),updated_at=NOW() \
+         WHERE id=$1 AND (status='running' OR (status='queued' AND $2='failed')) \
          RETURNING thread_id,project_id,requested_by_user_id",
     )
     .bind(id)
