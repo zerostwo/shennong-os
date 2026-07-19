@@ -240,9 +240,9 @@ Docker socket, or direct DB/Runtime link; privileged operations return to OS.
 
 Each Skill contains `SKILL.md` and `shennong.skill.yaml`. The manifest declares
 an immutable SemVer, content digest, permission ceiling, inputs, outputs, and
-validators. V1 ships seven governed Skills covering Project initialization,
-input checks, data discovery, single-cell workflows, result management,
-interpretation, and analysis validation.
+validators. V1 ships eight governed Skills covering Project initialization,
+input checks, data discovery, reproducible R analysis, single-cell workflows,
+result management, interpretation, and analysis validation.
 
 Publishing requires schema, digest, permission, input/output,
 prompt-injection-fixture, validator, and forward tests. Enabling a Skill binds

@@ -129,7 +129,7 @@ async fn migrations_bootstrap_and_agent_gateway_security_contracts() {
     .fetch_one(&pool)
     .await
     .expect("count seeded built-in skills");
-    assert_eq!(builtin_count, 7);
+    assert_eq!(builtin_count, 8);
 
     let builtin_sources = [
         (
@@ -156,6 +156,11 @@ async fn migrations_bootstrap_and_agent_gateway_security_contracts() {
             "manage-analysis-results",
             1,
             include_str!("../../../skills/manage-analysis-results/SKILL.md"),
+        ),
+        (
+            "run-reproducible-r-analysis",
+            1,
+            include_str!("../../../skills/run-reproducible-r-analysis/SKILL.md"),
         ),
         (
             "run-shennong-single-cell-workflow",
