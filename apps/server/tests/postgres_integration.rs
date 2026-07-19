@@ -347,16 +347,24 @@ async fn migrations_bootstrap_and_agent_gateway_security_contracts() {
             }))
     };
 
-    let missing_project = request(Uuid::new_v4(), Uuid::new_v4())
+    let personal_thread = Uuid::new_v4();
+    let personal_chat = request(personal_thread, Uuid::new_v4())
         .send()
         .await
-        .expect("missing project response");
-    assert_eq!(missing_project.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    let missing_error: serde_json::Value = missing_project
+        .expect("personal chat response");
+    assert_eq!(personal_chat.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let personal_error: serde_json::Value = personal_chat
         .json()
         .await
-        .expect("missing project error body");
-    assert_eq!(missing_error["error"]["code"], "project_required");
+        .expect("personal chat error body");
+    assert_eq!(personal_error["error"]["code"], "agent_runtime_unavailable");
+    let personal_owner: Option<Uuid> =
+        sqlx::query_scalar("SELECT owner_user_id FROM threads WHERE id=$1 AND project_id IS NULL")
+            .bind(personal_thread)
+            .fetch_optional(&pool)
+            .await
+            .expect("read personal thread");
+    assert_eq!(personal_owner, Some(user_id));
 
     let existing_thread = Uuid::new_v4();
     sqlx::query(

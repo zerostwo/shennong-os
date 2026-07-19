@@ -178,6 +178,12 @@ Project record is a graph/provenance shadow, never an authorization source. OS
 performs idempotent shadow synchronization on writes and lazily before each
 Project data-plane request, so a DB outage can self-heal without weakening RBAC.
 
+OS also supports owner-private personal Threads whose `project_id` is null.
+They can use conversation and explicitly public discovery capabilities, but
+Project files, private Resources, Runtime execution, and Project-scoped tools
+remain unavailable until the user works inside an authorized Project. Omitting
+a Project header never grants an implicit Project or bypasses its RBAC.
+
 ## 6. WebUI, assistant-ui, and AG-UI
 
 The WebUI uses Next.js 15, assistant-ui, `@assistant-ui/react-ag-ui`, native
