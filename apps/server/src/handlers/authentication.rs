@@ -647,17 +647,16 @@ fn validate_avatar_url(value: Option<String>) -> Result<Option<String>, ApiError
     let value = value
         .map(|item| item.trim().to_owned())
         .filter(|item| !item.is_empty());
-    if let Some(value) = value.as_deref() {
-        if value.len() > 700_000
+    if let Some(value) = value.as_deref()
+        && (value.len() > 700_000
             || !(value.starts_with("data:image/png;base64,")
                 || value.starts_with("data:image/jpeg;base64,")
                 || value.starts_with("data:image/webp;base64,")
-                || value.starts_with("https://"))
-        {
-            return Err(ApiError::invalid(
-                "avatar must be a PNG, JPEG, or WebP image under 500 KB",
-            ));
-        }
+                || value.starts_with("https://")))
+    {
+        return Err(ApiError::invalid(
+            "avatar must be a PNG, JPEG, or WebP image under 500 KB",
+        ));
     }
     Ok(value)
 }
