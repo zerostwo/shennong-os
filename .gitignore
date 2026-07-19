@@ -13,4 +13,7 @@ target/
 coverage/
 test-results/
 playwright-report/
+.playwright-cli/
+output/playwright/
+postdeploy-chat*.png
 .DS_Store
