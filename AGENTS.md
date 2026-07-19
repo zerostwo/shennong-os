@@ -7,7 +7,8 @@ Shennong Runtime owns isolated code execution.
 
 ## Start with repository evidence
 
-1. Read this file, `README.md`, and the relevant part of `ARCHITECTURE.md`.
+1. Read this file, `README.md`, and the relevant part of
+   `docs/architecture.md`.
 2. If `.codegraph/` exists, use `codegraph status` and `codegraph explore
    "<symbols or question>"` before `rg`, `find`, or broad file reading. Ask for
    current symbols, call paths, and tests; do not infer behavior from docs alone.
@@ -33,6 +34,7 @@ instructions and prefix shell commands with `rtk`.
 - `migrations/`: append-only OS PostgreSQL schema history.
 - `skills/`: immutable versioned built-in Skill content and manifests.
 - `openapi/os-api.yaml`: browser- and service-facing OS HTTP contract.
+- `docs/`: maintained architecture and documentation index.
 - `deploy/`: production Compose, gateway, secrets, rootless Runtime, backup,
   restore, and smoke-test assets shared by the three-repository deployment.
 
@@ -103,7 +105,7 @@ and must preserve existing data with a verified rollback artifact.
 
 - Keep `README.md` as the concise entry point with a rendered Mermaid overview
   and links to the detailed architecture, API, and deployment contracts.
-- Update `ARCHITECTURE.md` when component ownership, control/data flow, trust
+- Update `docs/architecture.md` when component ownership, control/data flow, trust
   boundaries, deployment topology, failure semantics, non-goals, or cross-repo
   contracts change. Verify every claim against current code and configuration.
 - Maintain `CHANGELOG.md` in Keep a Changelog 1.1.0 format under `Unreleased`.

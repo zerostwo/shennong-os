@@ -65,7 +65,7 @@ Runtime container receives the host socket; this weakens workload isolation and
 is not the hardened production boundary. Durable control-plane state is owned
 by OS PostgreSQL; scientific catalog/provenance state is owned by ShennongDB;
 execution recovery state is owned by Runtime. See
-[`ARCHITECTURE.md`](ARCHITECTURE.md) for the request flows, state ownership,
+[`docs/architecture.md`](docs/architecture.md) for the request flows, state ownership,
 failure modes, cross-repository contracts, and deployment invariants.
 
 Uploads are available only inside an active Project. The Web BFF streams the
@@ -91,6 +91,24 @@ that Project.
 - `migrations`: the Shennong OS control-plane schema.
 - `openapi`: the V1 HTTP contract.
 - `deploy`: unified deployment assets for all three Shennong repositories.
+
+### Agent runtime versions
+
+The built-in Agent harness uses exact dependency pins so an OS image can be
+audited without guessing the Pi stack from the OS release number:
+
+| Component | Version |
+| --- | --- |
+| Shennong Agent Runtime | `1.0.0` |
+| `@earendil-works/pi-agent-core` | `0.80.10` |
+| `@earendil-works/pi-ai` | `0.80.10` |
+| AG-UI core and encoder | `0.0.57` |
+| Node.js / pnpm contract | `>=22` / `10.17.1` |
+
+`apps/agent-runtime/package.json` and `apps/agent-runtime/pnpm-lock.yaml` are the
+dependency source of truth. The Agent Runtime `/health` response reports Pi
+Agent Core `0.80.10`; an upgrade must update that response, both dependency
+files, the detailed architecture, and the changelog together.
 
 V1 `project.list_files`, `project.read_file`, and `project.write_file` operate
 only on bounded, OS-owned project text records. They never resolve a host path,
@@ -144,9 +162,10 @@ pnpm lint
 pnpm build
 ```
 
-See [`deploy/SIMPLE.md`](deploy/SIMPLE.md) for the default three-image quick
+See [`docs/README.md`](docs/README.md) for the documentation index,
+[`deploy/SIMPLE.md`](deploy/SIMPLE.md) for the default three-image quick
 deployment and [`deploy/README.md`](deploy/README.md) for the retained hardened
-profile. [`ARCHITECTURE.md`](ARCHITECTURE.md) is the frozen V1 architecture,
+profile. [`docs/architecture.md`](docs/architecture.md) is the frozen V1 architecture,
 security model, and acceptance contract; [`openapi/os-api.yaml`](openapi/os-api.yaml)
 is the browser and service-facing OS HTTP contract. Repository automation and
 change conventions are documented in [`AGENTS.md`](AGENTS.md).

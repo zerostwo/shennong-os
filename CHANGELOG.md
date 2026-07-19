@@ -42,6 +42,9 @@ The format is based on [Keep a Changelog 1.1.0], and this project adheres to
 
 ### Changed
 
+- Move the detailed architecture contract into the standard `docs/` tree,
+  publish it fully in English, and document the exact built-in Pi Agent,
+  provider, AG-UI, Node.js, and pnpm versions in the README and design record.
 - Enable public Shennong DB discovery by default for new personal chats and
   enable both data discovery and reproducible R execution for new Project
   chats, while preserving Project RBAC and Runtime approval requirements.
